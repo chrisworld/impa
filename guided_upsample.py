@@ -17,7 +17,9 @@ def compute_psnr(img1, img2):
 
       @return: Peak signal-to-noise ratio between the first and second image
     """
-    return
+    # mse
+    mse = np.sum(np.power((img1 - img2), 2)) / (img1.shape[2] * img1.shape[1] * img1.shape[0])
+    return 10 * np.log10( 1 / mse)
 
 
 def compute_mean(image, filter_size):
@@ -69,7 +71,7 @@ def compute_b(m, a, mu):
 
       @return: image containing b_k for each pixel
     """
-    return
+    return m - a * mu
 
 
 def compute_q(mean_a, mean_b, I):
@@ -103,6 +105,15 @@ def prepare_imgs(input_filename, upsample_ratio):
         reference_img: the high resolution reference image, this should only be used for calculation of the PSNR and plots for comparison
     """
 
+    # read reference image
+    reference_img = io.imread(input_filename)
+
+    # guidance image to grey-scale
+    guidance_img = rgb2gray(reference_img)
+
+    # resize images
+    input_img = rescale(reference_img, 1 / downsample_ratio, multichannel=True, mode='reflect', anti_aliasing=True)
+
     return input_img, guidance_img, initial_img
 
 
@@ -114,9 +125,9 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # Set Parameters
-    downsample_ratio = # TODO
-    filter_size = # TODO
-    epsilon = # TODO
+    downsample_ratio = 4
+    filter_size = 3
+    epsilon = 0.1
 
     # Parse Parameter
     if len(sys.argv) != 2:
