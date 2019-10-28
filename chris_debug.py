@@ -33,7 +33,7 @@ def compute_mean(image, filter_size):
 
       @return: image containing the mean for each pixel
     """
-    print("mean: ", image.shape)
+    #print("mean: ", image.shape)
 
     # primitive
     # # init to zeros
@@ -68,7 +68,7 @@ def compute_variance(image, filter_size):
 
       @return: image containing the variance (sigma^2) for each pixel
     """
-    print("var: ", image.shape)
+    #print("var: ", image.shape)
 
     # # init to zeros
     # var = np.zeros(image.shape)
@@ -90,7 +90,7 @@ def compute_variance(image, filter_size):
     #     var[row, col] = np.var(image[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1])
 
     # return var
-    return np.power(image, 2) - compute_mean(image, filter_size)
+    return compute_mean(np.power(image, 2), filter_size) - np.power(compute_mean(image, filter_size), 2)
 
 
 def compute_a(F, I, m, mu, variance, filter_size, epsilon):
@@ -111,7 +111,9 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
     # init to zeros
     a = np.zeros(F.shape)
 
-    print("calc a")
+    r = (filter_size - 1) // 2
+
+    print("calc a:")
     # run through each pixel
     for row in range(F.shape[0]):
 
@@ -125,11 +127,20 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
         if (col - filter_size) < 0 or (col + filter_size) > F.shape[1]:
           continue
 
+
+        #print(F[row - r : row + r + 1, col - r : col + r + 1])
+        #print(I[row - r : row + r + 1, col - r : col + r + 1])
+        #print(m[row, col])
+        #print(mu[row, col])
+        #print('var: ', variance[row, col])
+
+        patch = np.sum(F[row - r : row + r + 1, col - r : col + r + 1] * I[row - r : row + r + 1, col - r : col + r + 1] - m[row, col] * mu[row, col])
+
         # the pixel
-        a[row, col] = 1 / (filter_size * filter_size) * np.sum(
-        F[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1] *
-        I[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1] -
-        m[row, col] * mu[row, col]) / (variance[row, col] + epsilon)
+        a[row, col] = patch / (variance[row, col] + epsilon) / (filter_size * filter_size)
+
+        #print(patch)
+        #print(a[row, col])
 
     return a
 
@@ -145,9 +156,6 @@ def compute_b(m, a, mu):
       @return: image containing b_k for each pixel
     """
     print('calc b:')
-    #print('m: ', m)
-    #print('a: ', a)
-    #print('mu: ', mu)
     return m - a * mu
 
 
@@ -157,43 +165,73 @@ def compute_q(mean_a, mean_b, I):
       @return: filtered image
     """
     print('calc q:')
-
     return mean_a * I + mean_b
 
 
 def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon):
 
-    return
-
-
-def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
-
     # F is the input_img, I is the grey guidance_img
 
     # compute mean and variance of guidance image
     mu = compute_mean(guidance_img, filter_size)
+
     variance = compute_variance(guidance_img, filter_size)
 
-    # plots
-    #
-    plt.figure(1)
-    #plt.imshow(guidance_img)
-    plt.imshow(mu, cmap='gray', interpolation='none')
-    plt.show()
-
-    # apply the filter for each channel
+    # print(variance)
+    # plt.figure(1)
+    # plt.imshow(variance, cmap='gray', interpolation='none')
+    # plt.show()
 
     # mp is mean of F in wp
-    m = compute_mean(input_img[:, :, 1], filter_size)
+    m = compute_mean(input_img, filter_size)
 
     # compute a
-    a = compute_a(input_img[:, :, 1], guidance_img, m, mu, variance, filter_size, epsilon)
+    a = compute_a(input_img, guidance_img, m, mu, variance, filter_size, epsilon)
 
     # compute b
     b = compute_b(m, a, mu)
 
+    # print(b)
+    # plt.figure(1)
+    # plt.imshow(a, cmap='gray', interpolation='none')
+    # plt.show()
+
     # compute Uq
-    Uq = compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img)
+    return compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img)
+    
+
+
+def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
+
+    # Init output image
+    Uq = np.zeros(input_img.shape)
+
+    # apply the filter for each channel
+    for color in range(Uq.shape[2]):
+
+      print("color: ", color)
+
+      # guided filter
+      Uq[:, :, color] = np.clip(calculate_guided_image_filter(input_img[:, :, color], guidance_img, filter_size, epsilon), 0, 1.0)
+
+      print("max uq: ", np.max(Uq[:, :, color]))
+      print("min uq: ", np.min(Uq[:, :, color]))
+      # plt.figure(1)
+      # plt.imshow(guidance_img)
+      # plt.imshow(Uq[:, :, 0], cmap='gray', interpolation='none')
+      # plt.show()
+
+    # plots
+    #
+    plt.figure(2)
+
+    # plt.subplot(131), plt.imshow(Uq[:, :, 0]), plt.colorbar(fraction=0.035);
+    # plt.subplot(132), plt.imshow(Uq[:, :, 1]), plt.colorbar(fraction=0.035);
+    # plt.subplot(133), plt.imshow(Uq[:, :, 2]), plt.colorbar(fraction=0.035);
+
+    plt.imshow(Uq)
+    #plt.imshow(Uq[:, :, 0], cmap='gray', interpolation='none')
+    plt.show()
 
     return Uq
 
@@ -247,7 +285,7 @@ if __name__ == "__main__":
     downsample_ratio = 4
 
     # filter radius
-    r = 2
+    r = 1
 
     # filter window size
     filter_size = 2 * r + 1
