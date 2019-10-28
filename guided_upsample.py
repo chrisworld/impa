@@ -5,7 +5,7 @@ import sys
 import time
 
 from skimage import io
-from skimage.transform import resize
+from skimage.transform import resize, rescale
 from skimage.color import rgb2gray
 from scipy.ndimage.filters import *
 
@@ -30,7 +30,7 @@ def compute_mean(image, filter_size):
 
       @return: image containing the mean for each pixel
     """
-    return
+    return uniform_filter(image, filter_size, mode='reflect')
 
 
 def compute_variance(image, filter_size):
@@ -114,7 +114,7 @@ def prepare_imgs(input_filename, upsample_ratio):
     # resize images
     input_img = rescale(reference_img, 1 / downsample_ratio, multichannel=True, mode='reflect', anti_aliasing=True)
 
-    return input_img, guidance_img, initial_img
+    return input_img, guidance_img, reference_img
 
 
 def plot_result(input_img, guidance_img, filtered_img):
@@ -126,7 +126,12 @@ if __name__ == "__main__":
 
     # Set Parameters
     downsample_ratio = 4
-    filter_size = 3
+
+    # filter radius
+    r = 2
+
+    # filter window size
+    filter_size = 2 * r + 1
     epsilon = 0.1
 
     # Parse Parameter

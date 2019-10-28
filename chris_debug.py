@@ -35,26 +35,29 @@ def compute_mean(image, filter_size):
     """
     print("mean: ", image.shape)
 
-    # init to zeros
-    mu = np.zeros(image.shape)
+    # primitive
+    # # init to zeros
+    # mu = np.zeros(image.shape)
 
-    # run through each pixel
-    for row in range(image.shape[0]):
+    # # run through each pixel
+    # for row in range(image.shape[0]):
 
-      # skip edges
-      if (row - filter_size) < 0 or (row + filter_size) > image.shape[0]:
-        continue
+    #   # skip edges
+    #   if (row - filter_size) < 0 or (row + filter_size) > image.shape[0]:
+    #     continue
 
-      for col in range(image.shape[1]):
+    #   for col in range(image.shape[1]):
 
-        # skip edges
-        if (col - filter_size) < 0 or (col + filter_size) > image.shape[1]:
-          continue
+    #     # skip edges
+    #     if (col - filter_size) < 0 or (col + filter_size) > image.shape[1]:
+    #       continue
 
-        # the pixel means
-        mu[row, col] = np.mean(image[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1])
+    #     # the pixel means
+    #     mu[row, col] = np.mean(image[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1])
 
-    return mu
+    # return mu
+
+    return uniform_filter(image, filter_size, mode='reflect')
 
 
 def compute_variance(image, filter_size):
@@ -67,27 +70,27 @@ def compute_variance(image, filter_size):
     """
     print("var: ", image.shape)
 
-    # init to zeros
-    var = np.zeros(image.shape)
+    # # init to zeros
+    # var = np.zeros(image.shape)
 
-    # run through each pixel
-    for row in range(image.shape[0]):
+    # # run through each pixel
+    # for row in range(image.shape[0]):
 
-      # skip edges
-      if (row - filter_size) < 0 or (row + filter_size) > image.shape[0]:
-        continue
+    #   # skip edges
+    #   if (row - filter_size) < 0 or (row + filter_size) > image.shape[0]:
+    #     continue
 
-      for col in range(image.shape[1]):
+    #   for col in range(image.shape[1]):
 
-        # skip edges
-        if (col - filter_size) < 0 or (col + filter_size) > image.shape[1]:
-          continue
+    #     # skip edges
+    #     if (col - filter_size) < 0 or (col + filter_size) > image.shape[1]:
+    #       continue
 
-        # the pixel variances
-        var[row, col] = np.var(image[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1])
+    #     # the pixel variances
+    #     var[row, col] = np.var(image[row - filter_size : row + filter_size + 1, col - filter_size : col + filter_size + 1])
 
-
-    return var
+    # return var
+    return np.power(image, 2) - compute_mean(image, filter_size)
 
 
 def compute_a(F, I, m, mu, variance, filter_size, epsilon):
@@ -171,6 +174,13 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
     mu = compute_mean(guidance_img, filter_size)
     variance = compute_variance(guidance_img, filter_size)
 
+    # plots
+    #
+    plt.figure(1)
+    #plt.imshow(guidance_img)
+    plt.imshow(mu, cmap='gray', interpolation='none')
+    plt.show()
+
     # apply the filter for each channel
 
     # mp is mean of F in wp
@@ -183,7 +193,7 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
     b = compute_b(m, a, mu)
 
     # compute Uq
-    Uq = compute_q(np.mean(a), np.mean(b), guidance_img)
+    Uq = compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img)
 
     return Uq
 
@@ -235,7 +245,13 @@ if __name__ == "__main__":
 
     # Set Parameters
     downsample_ratio = 4
-    filter_size = 1
+
+    # filter radius
+    r = 2
+
+    # filter window size
+    filter_size = 2 * r + 1
+
     epsilon = 0.1
 
     # Parse Parameter
