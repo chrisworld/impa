@@ -108,41 +108,38 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
       @return: image containing a_k for each pixel
     """
 
-    # init to zeros
-    a = np.zeros(F.shape)
+    # # init to zeros
+    # a = np.zeros(F.shape)
 
-    r = (filter_size - 1) // 2
+    # r = (filter_size - 1) // 2
 
-    print("calc a:")
-    # run through each pixel
-    for row in range(F.shape[0]):
+    # print("calc a:")
 
-      # skip edges
-      if (row - filter_size) < 0 or (row + filter_size) > F.shape[0]:
-        continue
+    # # primitive method
+    # # run through each pixel
+    # for row in range(F.shape[0]):
 
-      for col in range(F.shape[1]):
+    #   # skip edges
+    #   if (row - filter_size) < 0 or (row + filter_size) > F.shape[0]:
+    #     continue
 
-        # skip edges
-        if (col - filter_size) < 0 or (col + filter_size) > F.shape[1]:
-          continue
+    #   for col in range(F.shape[1]):
+
+    #     # skip edges
+    #     if (col - filter_size) < 0 or (col + filter_size) > F.shape[1]:
+    #       continue
+
+    #     patch = np.sum(F[row - r : row + r + 1, col - r : col + r + 1] * I[row - r : row + r + 1, col - r : col + r + 1] - m[row, col] * mu[row, col])
+
+    #     # the pixel
+    #     a[row, col] = patch / (variance[row, col] + epsilon) / (filter_size * filter_size)
+
+    # return a
+
+    return (compute_mean(F * I, filter_size) - (m * mu)) / (variance + epsilon)
 
 
-        #print(F[row - r : row + r + 1, col - r : col + r + 1])
-        #print(I[row - r : row + r + 1, col - r : col + r + 1])
-        #print(m[row, col])
-        #print(mu[row, col])
-        #print('var: ', variance[row, col])
 
-        patch = np.sum(F[row - r : row + r + 1, col - r : col + r + 1] * I[row - r : row + r + 1, col - r : col + r + 1] - m[row, col] * mu[row, col])
-
-        # the pixel
-        a[row, col] = patch / (variance[row, col] + epsilon) / (filter_size * filter_size)
-
-        #print(patch)
-        #print(a[row, col])
-
-    return a
 
 
 def compute_b(m, a, mu):
@@ -155,7 +152,7 @@ def compute_b(m, a, mu):
 
       @return: image containing b_k for each pixel
     """
-    print('calc b:')
+    #print('calc b:')
     return m - a * mu
 
 
