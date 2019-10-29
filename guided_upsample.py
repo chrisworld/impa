@@ -41,7 +41,7 @@ def compute_variance(image, filter_size):
 
       @return: image containing the variance (\sigma^2) for each pixel
     """
-    return
+    return compute_mean(np.power(image, 2), filter_size) - np.power(compute_mean(image, filter_size), 2)
 
 
 def compute_a(F, I, m, mu, variance, filter_size, epsilon):
@@ -58,7 +58,7 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
 
       @return: image containing a_k for each pixel
     """
-    return
+    return (compute_mean(F * I, filter_size) - (m * mu)) / (variance + epsilon)
 
 
 def compute_b(m, a, mu):
@@ -79,17 +79,49 @@ def compute_q(mean_a, mean_b, I):
       Compute the final filtered result 'q' as described in the task (equation 6)
       @return: filtered image
     """
-    return
+    return mean_a * I + mean_b
 
 
 def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon):
 
-    return
+    # F is the input_img, I is the grey guidance_img
+
+    # compute mean and variance of guidance image
+    mu = compute_mean(guidance_img, filter_size)
+    variance = compute_variance(guidance_img, filter_size)
+
+    # mp is mean of F in wp
+    m = compute_mean(input_img, filter_size)
+
+    # compute a
+    a = compute_a(input_img, guidance_img, m, mu, variance, filter_size, epsilon)
+
+    # compute b
+    b = compute_b(m, a, mu)
+
+    # compute Uq
+    return compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img)
 
 
 def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
 
-    return
+    # Init output image
+    Uq = np.zeros(input_img.shape)
+
+    # apply the filter for each channel
+    for color in range(Uq.shape[2]):
+
+      # guided filter
+      Uq[:, :, color] = np.clip(calculate_guided_image_filter(input_img[:, :, color], guidance_img, filter_size, epsilon), 0, 1.0)
+
+
+    # plots
+    #
+    plt.figure(1)
+    plt.imshow(Uq)
+    plt.show()
+
+    return Uq
 
 
 def prepare_imgs(input_filename, upsample_ratio):
