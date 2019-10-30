@@ -20,8 +20,11 @@ def compute_psnr(img1, img2):
 
       @return: Peak signal-to-noise ratio between the first and second image
     """
+    #print("PSNR")
+    #print("img1: ", img1.shape)
+    #print("img2: ", img2.shape)
     # mse
-    mse = np.sum(np.power((img1 - img2), 2)) / (img1.shape[2] * img1.shape[1] * img1.shape[0])
+    mse = np.sum(np.power((img1 - img2), 2)) / np.prod(img1.shape)
     return 10 * np.log10( 1 / mse)
 
 
@@ -194,14 +197,24 @@ def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
     # plt.show()
 
     # compute Uq
-    return compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img)
+    return (compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img), a, b)
     
 
 
 def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
 
-    # Init output image
+    # Init output image and filter coeffs
     Uq = np.zeros(input_img.shape)
+    a = np.zeros(input_img.shape)
+    b = np.zeros(input_img.shape)
+
+    # approach two: sample down guidance image
+    if input_img.shape != guidance_img.shape:
+      I = resize(guidance_img, input_img.shape[0:2])
+
+    # approach one: input_img was upsampled to shape of guidance img
+    else:
+      I = guidance_img
 
     # apply the filter for each channel
     for color in range(Uq.shape[2]):
@@ -209,8 +222,9 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
       print("color: ", color)
 
       # guided filter
-      Uq[:, :, color] = np.clip(calculate_guided_image_filter(input_img[:, :, color], guidance_img, filter_size, epsilon), 0, 1.0)
-
+      Uq[:, :, color], a[:, :, color], b[:, :, color] = calculate_guided_image_filter(input_img[:, :, color], I, filter_size, epsilon)
+      #a, b, c = calculate_guided_image_filter(input_img[:, :, color], I, filter_size, epsilon)
+      #print(a.shape, b.shape, c.shape)
       print("max uq: ", np.max(Uq[:, :, color]))
       print("min uq: ", np.min(Uq[:, :, color]))
       # plt.figure(1)
@@ -218,19 +232,27 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
       # plt.imshow(Uq[:, :, 0], cmap='gray', interpolation='none')
       # plt.show()
 
-    # plots
-    #
-    plt.figure(2)
+    # approach two: upsample filter coeffs
+    if input_img.shape != guidance_img.shape:
 
-    # plt.subplot(131), plt.imshow(Uq[:, :, 0]), plt.colorbar(fraction=0.035);
-    # plt.subplot(132), plt.imshow(Uq[:, :, 1]), plt.colorbar(fraction=0.035);
-    # plt.subplot(133), plt.imshow(Uq[:, :, 2]), plt.colorbar(fraction=0.035);
+      # upsampled coeffs output image
+      Uq_up = np.zeros(guidance_img.shape + (input_img.shape[2], ))
 
-    plt.imshow(Uq)
-    #plt.imshow(Uq[:, :, 0], cmap='gray', interpolation='none')
-    plt.show()
+      # apply the filter for each channel
+      for color in range(Uq.shape[2]):
 
-    return Uq
+        # upsample filter coeffs
+        a_up = resize(a[:, :, color], guidance_img.shape)
+        b_up = resize(b[:, :, color], guidance_img.shape)
+
+        # compute output image with upsampled coeffs
+        Uq_up[:, :, color] = compute_q(compute_mean(a_up, filter_size), compute_mean(b_up, filter_size), guidance_img)
+
+      return np.clip(Uq_up, 0, 1.0)
+
+
+
+    return np.clip(Uq, 0, 1.0)
 
 
 def prepare_imgs(input_filename, downsample_ratio):
@@ -252,10 +274,11 @@ def prepare_imgs(input_filename, downsample_ratio):
 
     # guidance image to grey-scale
     guidance_img = rgb2gray(reference_img)
+    print('guidance_img: ', guidance_img.shape)
 
     # resize images
     input_img = rescale(reference_img, 1 / downsample_ratio, multichannel=True, mode='reflect', anti_aliasing=True)
-    print('scaled: ', input_img.shape)
+    print('input_img: ', input_img.shape)
 
 
     # plots
@@ -265,14 +288,16 @@ def prepare_imgs(input_filename, downsample_ratio):
     # plt.imshow(guidance_img, cmap='gray', interpolation='none')
     # plt.show()
 
-
-
-
     return input_img, guidance_img, reference_img
 
 
 def plot_result(input_img, guidance_img, filtered_img):
-    pass
+    plt.figure(1)
+    plt.subplot(131), plt.imshow(input_img);
+    plt.subplot(132), plt.imshow(guidance_img, cmap='gray');
+    plt.subplot(133), plt.imshow(filtered_img);
+    #plt.imshow(Uq[:, :, 0], cmap='gray', interpolation='none')
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -282,7 +307,7 @@ if __name__ == "__main__":
     downsample_ratio = 4
 
     # filter radius
-    r = 1
+    r = 2
 
     # filter window size
     filter_size = 2 * r + 1
@@ -312,8 +337,9 @@ if __name__ == "__main__":
     psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
     psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
-    print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2,
-                                                                                                                                                           psnr_filtered_1, psnr_upsampled_1))
+    # print results
+    print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
+      .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
 
     # Plot result
     plot_result(input_img, guidance_img, filtered_img_2)
