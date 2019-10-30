@@ -20,7 +20,7 @@ def compute_psnr(img1, img2):
     # compute difference between images, pointwise square them and sum
     # them up 
     MSE = 1./np.size(img1) * np.sum(np.square(img1 - img2))
-    PSNR = np.log10(1./MSE)
+    PSNR = 10*np.log10(1./MSE)
     return PSNR
 
 
@@ -44,7 +44,8 @@ def compute_variance(image, filter_size):
       @return: image containing the variance (\sigma^2) for each pixel
     """
 
-    return uniform_filter(np.square(image), filter_size, mode="reflect") - np.square(uniform_filter(image, filter_size, mode="reflect"))
+    #return uniform_filter(np.square(image), filter_size, mode="reflect") - np.square(uniform_filter(image, filter_size, mode="reflect"))
+    return compute_mean(np.square(image), filter_size)- np.square(uniform_filter(image, filter_size, mode="reflect"))
 
 
 def compute_a(F, I, m, mu, variance, filter_size, epsilon):
@@ -58,13 +59,12 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
       @param: variance of guidance imag
       @param: filter_size
       @param: epsilon smoothing parameter
-
-      @return: image containing a_k for each pixel
+@return: image containing a_k for each pixel
     """
     #m_p = uniform_filter(F, filter_size, mode="reflect")
     #mu_p = uniform_filter(I, filter_size, mode="reflect" )
     
-    return (uniform_filter(I*F, filter_size, mode="reflect") - m*mu)/(variance + epsilon)
+    return (uniform_filter(F*I, filter_size, mode="reflect") - (m*mu))/(variance + epsilon)
 
 
 def compute_b(m, a, mu):
@@ -99,15 +99,14 @@ def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
     mu_p = compute_mean(I, filter_size)
 
     variance = compute_variance(I,filter_size)
+
     a_p = compute_a(F,I,m_p,mu_p, variance, filter_size, epsilon)
     b_p = compute_b(m_p, a_p, mu_p)
-    #print(a_p)
-    #print(b_p)
 
-    a_ = compute_mean(a_p, filter_size)
-    b_ = compute_mean(b_p, filter_size)
+    #a_ = compute_mean(a_p, filter_size)
+    #b_ = compute_mean(b_p, filter_size)
 
-    return a_, b_
+    return a_p, b_p
 
 
 def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
@@ -121,17 +120,21 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
       if (input_img.shape[0:2] == guidance_img.shape[0:2]):
         I = guidance_img
         F = input_img[:,:,color]
-        a_, b_ = calculate_guided_image_filter(F, I, filter_size, epsilon)
-        U_q[:,:,color] = np.clip(compute_q(a_, b_, I), 0.0, 1.0)
+        a, b = calculate_guided_image_filter(F, I, filter_size, epsilon)
+        a_ = compute_mean(a, filter_size)
+        b_ = compute_mean(b, filter_size)
+      # calculate coefficients a and b with the low resolution
+      # image + low res guidance
       else:
         I = resize(guidance_img, input_img.shape[0:2])
         F = input_img[:,:,color]
-        a_, b_ = calculate_guided_image_filter(F, I, filter_size, epsilon)
-        a_ = resize(a_, guidance_img.shape[0:2])
-        b_ = resize(b_, guidance_img.shape[0:2])
-        U_q[:,:,color] = np.clip(compute_q(a_, b_, guidance_img),0.0,1.0)
-        
-    return U_q
+        a, b = calculate_guided_image_filter(F, I, filter_size, epsilon)
+        a = resize(a, guidance_img.shape)
+        b = resize(b, guidance_img.shape)
+        a_ = compute_mean(a, filter_size)
+        b_ = compute_mean(b, filter_size)
+      U_q[:,:,color] = compute_q(a_, b_, guidance_img)
+    return np.clip(U_q,0.0,1.0)
 
 
 def prepare_imgs(input_filename, upsample_ratio):
@@ -157,7 +160,7 @@ def plot_result(input_img, guidance_img, filtered_img):
     plt.imshow(input_img)
 
     plt.figure(2)
-    plt.imshow(guidance_img)
+    plt.imshow(filtered_img)
     plt.show()
     pass
 
@@ -187,8 +190,8 @@ if __name__ == "__main__":
   
     # approach (2):
     filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
-    #plt.imshow(filtered_img_1)    
     # Calculate PSNR
+
     psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
     psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
