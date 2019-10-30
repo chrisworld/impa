@@ -17,7 +17,11 @@ def compute_psnr(img1, img2):
 
       @return: Peak signal-to-noise ratio between the first and second image
     """
-    return
+    # compute difference between images, pointwise square them and sum
+    # them up 
+    MSE = 1./np.size(img1) * np.sum(np.square(img1 - img2))
+    PSNR = np.log10(1./MSE)
+    return PSNR
 
 
 def compute_mean(image, filter_size):
@@ -39,7 +43,8 @@ def compute_variance(image, filter_size):
 
       @return: image containing the variance (\sigma^2) for each pixel
     """
-    return uniform_filter(np.square(image), filter_size, mode="reflect") - uniform_filter(image, filter_size, mode="reflect")
+
+    return uniform_filter(np.square(image), filter_size, mode="reflect") - np.square(uniform_filter(image, filter_size, mode="reflect"))
 
 
 def compute_a(F, I, m, mu, variance, filter_size, epsilon):
@@ -50,7 +55,7 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
       @param: I guidance image
       @param: m mean of input image
       @param: mu mean of guidance image
-      @param: variance of guidance image
+      @param: variance of guidance imag
       @param: filter_size
       @param: epsilon smoothing parameter
 
@@ -58,6 +63,7 @@ def compute_a(F, I, m, mu, variance, filter_size, epsilon):
     """
     #m_p = uniform_filter(F, filter_size, mode="reflect")
     #mu_p = uniform_filter(I, filter_size, mode="reflect" )
+    
     return (uniform_filter(I*F, filter_size, mode="reflect") - m*mu)/(variance + epsilon)
 
 
@@ -84,18 +90,53 @@ def compute_q(mean_a, mean_b, I):
 
 def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon):
 
-    return
+    # scenario 1, input image F = F_H and guided filter 
+    # I = G
+
+    F = input_img
+    I = guidance_img
+    m_p = compute_mean(F, filter_size)
+    mu_p = compute_mean(I, filter_size)
+
+    variance = compute_variance(I,filter_size)
+    a_p = compute_a(F,I,m_p,mu_p, variance, filter_size, epsilon)
+    b_p = compute_b(m_p, a_p, mu_p)
+    #print(a_p)
+    #print(b_p)
+
+    a_ = compute_mean(a_p, filter_size)
+    b_ = compute_mean(b_p, filter_size)
+
+    return a_, b_
 
 
 def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
+    # test dimension whether it is case one or two 
+    # and then call the corresponding function
+    # scenario 1: everything stays the same in terms
+    # of sizes
+    U_q = np.zeros([guidance_img.shape[0],guidance_img.shape[1], input_img.shape[2]])
 
-    return
+    for color in range(input_img.shape[2]):
+      if (input_img.shape[0:2] == guidance_img.shape[0:2]):
+        I = guidance_img
+        F = input_img[:,:,color]
+        a_, b_ = calculate_guided_image_filter(F, I, filter_size, epsilon)
+        U_q[:,:,color] = np.clip(compute_q(a_, b_, I), 0.0, 1.0)
+      else:
+        I = resize(guidance_img, input_img.shape[0:2])
+        F = input_img[:,:,color]
+        a_, b_ = calculate_guided_image_filter(F, I, filter_size, epsilon)
+        a_ = resize(a_, guidance_img.shape[0:2])
+        b_ = resize(b_, guidance_img.shape[0:2])
+        U_q[:,:,color] = np.clip(compute_q(a_, b_, guidance_img),0.0,1.0)
+        
+    return U_q
 
 
 def prepare_imgs(input_filename, upsample_ratio):
     """
       Prepare the images for the guided upsample filtering
-
       @param: input_filename Filename of the input image
       @param: upsample_ratio ratio between the filter input resolution and the guidance image resolution
 
@@ -104,21 +145,31 @@ def prepare_imgs(input_filename, upsample_ratio):
         guidance_img: the guidance image of the filter
         reference_img: the high resolution reference image, this should only be used for calculation of the PSNR and plots for comparison
     """
+    initial_img = io.imread(input_filename)
+    input_img = resize(initial_img, (initial_img.shape[0]// upsample_ratio, initial_img.shape[1] // upsample_ratio), anti_aliasing=True)
+    guidance_img = rgb2gray(initial_img)
 
     return input_img, guidance_img, initial_img
 
 
 def plot_result(input_img, guidance_img, filtered_img):
+    plt.figure(1)
+    plt.imshow(input_img)
+
+    plt.figure(2)
+    plt.imshow(guidance_img)
+    plt.show()
     pass
 
 
 if __name__ == "__main__":
     start_time = time.time()
 
+    r = 5
     # Set Parameters
-    downsample_ratio = # TODO
-    filter_size = # TODO
-    epsilon = # TODO
+    downsample_ratio = 4 # TODO
+    filter_size = (2*r+1)# TODO
+    epsilon = 0.1 # TODO
 
     # Parse Parameter
     if len(sys.argv) != 2:
@@ -129,13 +180,14 @@ if __name__ == "__main__":
     input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
 
     # Perform Guided Upsampling
-
     # approach (1):
+    #print(type(input_img))  
+    
     filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
-
+  
     # approach (2):
     filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
-
+    #plt.imshow(filtered_img_1)    
     # Calculate PSNR
     psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
     psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
