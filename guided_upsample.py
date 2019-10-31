@@ -159,7 +159,7 @@ def prepare_imgs(input_filename, upsample_ratio):
     """
 
     # read reference image
-    reference_img = io.imread(input_filename)
+    reference_img = io.imread(input_filename) / 255.0
 
     # guidance image to grey-scale
     guidance_img = rgb2gray(reference_img)

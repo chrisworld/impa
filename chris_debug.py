@@ -20,9 +20,6 @@ def compute_psnr(img1, img2):
 
       @return: Peak signal-to-noise ratio between the first and second image
     """
-    #print("PSNR")
-    #print("img1: ", img1.shape)
-    #print("img2: ", img2.shape)
     # mse
     mse = np.sum(np.power((img1 - img2), 2)) / np.prod(img1.shape)
     return 10 * np.log10( 1 / mse)
@@ -164,7 +161,7 @@ def compute_q(mean_a, mean_b, I):
       Compute the final filtered result 'q' as described in the task (equation 6)
       @return: filtered image
     """
-    print('calc q:')
+    #print('calc q:')
     return mean_a * I + mean_b
 
 
@@ -174,13 +171,7 @@ def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
 
     # compute mean and variance of guidance image
     mu = compute_mean(guidance_img, filter_size)
-
     variance = compute_variance(guidance_img, filter_size)
-
-    # print(variance)
-    # plt.figure(1)
-    # plt.imshow(variance, cmap='gray', interpolation='none')
-    # plt.show()
 
     # mp is mean of F in wp
     m = compute_mean(input_img, filter_size)
@@ -190,11 +181,6 @@ def calculate_guided_image_filter(input_img, guidance_img, filter_size, epsilon)
 
     # compute b
     b = compute_b(m, a, mu)
-
-    # print(b)
-    # plt.figure(1)
-    # plt.imshow(a, cmap='gray', interpolation='none')
-    # plt.show()
 
     # compute Uq
     return (compute_q(compute_mean(a, filter_size), compute_mean(b, filter_size), guidance_img), a, b)
@@ -219,18 +205,11 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
     # apply the filter for each channel
     for color in range(Uq.shape[2]):
 
-      print("color: ", color)
+      #print("color: ", color)
 
       # guided filter
       Uq[:, :, color], a[:, :, color], b[:, :, color] = calculate_guided_image_filter(input_img[:, :, color], I, filter_size, epsilon)
-      #a, b, c = calculate_guided_image_filter(input_img[:, :, color], I, filter_size, epsilon)
-      #print(a.shape, b.shape, c.shape)
-      print("max uq: ", np.max(Uq[:, :, color]))
-      print("min uq: ", np.min(Uq[:, :, color]))
-      # plt.figure(1)
-      # plt.imshow(guidance_img)
-      # plt.imshow(Uq[:, :, 0], cmap='gray', interpolation='none')
-      # plt.show()
+
 
     # approach two: upsample filter coeffs
     if input_img.shape != guidance_img.shape:
@@ -250,8 +229,6 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
 
       return np.clip(Uq_up, 0, 1.0)
 
-
-
     return np.clip(Uq, 0, 1.0)
 
 
@@ -269,7 +246,7 @@ def prepare_imgs(input_filename, downsample_ratio):
     """
 
     # read reference image
-    reference_img = io.imread(input_filename)
+    reference_img = io.imread(input_filename) / 255.0
     print('reference_img: ', reference_img.shape)
 
     # guidance image to grey-scale
@@ -279,14 +256,6 @@ def prepare_imgs(input_filename, downsample_ratio):
     # resize images
     input_img = rescale(reference_img, 1 / downsample_ratio, multichannel=True, mode='reflect', anti_aliasing=True)
     print('input_img: ', input_img.shape)
-
-
-    # plots
-    #
-    # plt.figure(1)
-    # plt.imshow(guidance_img)
-    # plt.imshow(guidance_img, cmap='gray', interpolation='none')
-    # plt.show()
 
     return input_img, guidance_img, reference_img
 
@@ -300,6 +269,15 @@ def plot_result(input_img, guidance_img, filtered_img):
     plt.show()
 
 
+def plot_compare(img1, img2):
+    plt.figure(2)
+    plt.subplot(121).set_title("approach 1"), plt.imshow(img1, label='approach 1');
+    plt.subplot(122).set_title("approach 2"), plt.imshow(img2);
+
+    #plt.legend()
+    plt.show()
+
+
 if __name__ == "__main__":
     start_time = time.time()
 
@@ -307,7 +285,7 @@ if __name__ == "__main__":
     downsample_ratio = 4
 
     # filter radius
-    r = 2
+    r = 1
 
     # filter window size
     filter_size = 2 * r + 1
@@ -342,5 +320,6 @@ if __name__ == "__main__":
       .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
 
     # Plot result
-    plot_result(input_img, guidance_img, filtered_img_2)
-    plot_result(input_img, guidance_img, filtered_img_1)
+    #plot_result(input_img, guidance_img, filtered_img_2)
+    #plot_result(input_img, guidance_img, filtered_img_1)
+    plot_compare(filtered_img_1, filtered_img_2)
