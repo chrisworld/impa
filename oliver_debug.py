@@ -178,11 +178,11 @@ def plot_result(input_img, guidance_img, filtered_img):
 if __name__ == "__main__":
     start_time = time.time()
 
-    r = 2
+    r = 4
     # Set Parameters
     downsample_ratio = 4 # TODO
     filter_size = (2*r+1)# TODO
-    epsilon = 0.1 # TODO
+    epsilon = 0.01 # TODO
 
     # Parse Parameter
     if len(sys.argv) != 2:
@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
     psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
     psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
-    title2 = "gitignore/approach1_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed2, psnr_filtered_2, psnr_upsampled_2).replace(".","_")
+    title2 = "gitignore/approach2_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed2, psnr_filtered_2, psnr_upsampled_2).replace(".","_")
     print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
       .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
 
