@@ -133,6 +133,8 @@ def guided_upsampling(input_img, guidance_img, filter_size, epsilon):
         b = resize(b, guidance_img.shape)
         a_ = compute_mean(a, filter_size)
         b_ = compute_mean(b, filter_size)
+        #a_ = resize(a, guidance_img.shape)
+        #b_ = resize(b, guidance_img.shape)
       U_q[:,:,color] = compute_q(a_, b_, guidance_img)
     return np.clip(U_q,0.0,1.0)
 
@@ -148,27 +150,35 @@ def prepare_imgs(input_filename, upsample_ratio):
         guidance_img: the guidance image of the filter
         reference_img: the high resolution reference image, this should only be used for calculation of the PSNR and plots for comparison
     """
-    initial_img = io.imread(input_filename)
-    input_img = resize(initial_img, (initial_img.shape[0]// upsample_ratio, initial_img.shape[1] // upsample_ratio), anti_aliasing=True)
+    initial_img = io.imread(input_filename)/255
+    #initial_img = resize(initial_img, (initial_img.shape[0]//4, initial_img.shape[1]//4, initial_img.shape[2]), anti_aliasing=True)
+    input_img = resize(initial_img, (initial_img.shape[0]// upsample_ratio, initial_img.shape[1] // upsample_ratio, initial_img.shape[2]), anti_aliasing=True)
     guidance_img = rgb2gray(initial_img)
 
     return input_img, guidance_img, initial_img
 
 
 def plot_result(input_img, guidance_img, filtered_img):
-    plt.figure(1)
+    inputImag = plt.figure(1)
+    ax = plt.Axes(inputImag, [0.,0.,1.,1.])
+    ax.set_axis_off()
+    inputImag.add_axes(ax)
     plt.imshow(input_img)
 
-    plt.figure(2)
+    filteredImag = plt.figure(frameon=False)
+    ax = plt.Axes(filteredImag, [0.,0.,1.,1.])
+    ax.set_axis_off()
+    filteredImag.add_axes(ax)
     plt.imshow(filtered_img)
     plt.show()
+    
     pass
 
 
 if __name__ == "__main__":
     start_time = time.time()
 
-    r = 5
+    r = 2
     # Set Parameters
     downsample_ratio = 4 # TODO
     filter_size = (2*r+1)# TODO
@@ -184,23 +194,31 @@ if __name__ == "__main__":
 
     # Perform Guided Upsampling
     # approach (1):
-    #print(type(input_img))  
-    
+    pre_filter = time.time()
     filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+    elapsed1 = time.time() - pre_filter
   
     # approach (2):
+    pre_filter = time.time()
     filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+    elapsed2 = time.time() - pre_filter
+    #print(title)
     # Calculate PSNR
 
     psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
     psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+    title1 = "gitignore/approach1_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed1, psnr_filtered_1, psnr_upsampled_1).replace(".","_")
 
     psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
     psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+    title2 = "gitignore/approach1_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed2, psnr_filtered_2, psnr_upsampled_2).replace(".","_")
+    print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
+      .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
 
-    print('Runtime: {} - [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'.format(time.time() - start_time, psnr_filtered_2, psnr_upsampled_2,
-                                                                                                                                                           psnr_filtered_1, psnr_upsampled_1))
-
+    print(title1)
+    io.imsave(title1+".png", filtered_img_1)
+    print(title2)
+    io.imsave(title2+".png", filtered_img_2)
     # Plot result
     plot_result(input_img, guidance_img, filtered_img_2)
     plot_result(input_img, guidance_img, filtered_img_1)
