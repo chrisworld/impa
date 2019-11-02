@@ -12,6 +12,8 @@ from skimage.transform import resize, rescale
 from skimage.color import rgb2gray
 from scipy.ndimage.filters import *
 
+from np_table import np_table
+
 
 def compute_psnr(img1, img2):
     """
@@ -278,6 +280,38 @@ def plot_compare(img1, img2):
     plt.show()
 
 
+def vary_param_epsilon(input_img, guidance_img, filter_size):
+
+    epsilons = np.array([0.1, 0.01, 0.001])
+
+    psnr = np.empty((0, 2), float)
+
+    for epsilon in epsilons:
+
+      # approach (1):
+      filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+
+      # approach (2):
+      filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+
+      # Calculate PSNR
+      psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
+      psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+
+      psnr = np.vstack((psnr, np.array([psnr_filtered_1, psnr_filtered_2])))
+
+    psnr = np.transpose(psnr)
+    print(psnr)
+
+    # print table
+    np_table('psnr1', psnr, ('eps', 'eps', 'eps'), epsilons)
+    #np_table('psnr1', psnr, params=epsilons)
+    #np_table('psnr1', psnr)
+
+    #psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+    #psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+
+
 if __name__ == "__main__":
     start_time = time.time()
 
@@ -285,12 +319,12 @@ if __name__ == "__main__":
     downsample_ratio = 4
 
     # filter radius
-    r = 1
+    r = 16
 
     # filter window size
     filter_size = 2 * r + 1
 
-    epsilon = 0.1
+    epsilon = 0.001
 
     # Parse Parameter
     if len(sys.argv) != 2:
@@ -299,6 +333,10 @@ if __name__ == "__main__":
 
     # Prepare Images
     input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
+
+
+    # vary params
+    vary_param_epsilon(input_img, guidance_img, filter_size)
 
     # Perform Guided Upsampling
 
@@ -322,4 +360,7 @@ if __name__ == "__main__":
     # Plot result
     #plot_result(input_img, guidance_img, filtered_img_2)
     #plot_result(input_img, guidance_img, filtered_img_1)
-    plot_compare(filtered_img_1, filtered_img_2)
+    #plot_compare(filtered_img_1, filtered_img_2)
+
+    #io.imsave("bla.jpg", filtered_img_1)
+    #io.imsave("bla.png", filtered_img_1)
