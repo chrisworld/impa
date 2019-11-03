@@ -312,6 +312,64 @@ def vary_param_epsilon(input_img, guidance_img, filter_size):
     #psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
 
+
+def vary_param_filter_size(input_img, guidance_img, epsilon, downsample_ratio):
+
+    filter_sizes = np.array([9, 33, 129])
+
+    psnr = np.empty((0, 2), float)
+
+    for filter_size in filter_sizes:
+
+      # approach (1):
+      filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+
+      # approach (2):
+      filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+
+      # Calculate PSNR
+      psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
+      psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+
+      psnr = np.vstack((psnr, np.array([psnr_filtered_1, psnr_filtered_2])))
+
+    psnr = np.transpose(psnr)
+
+    # print table
+    np_table('vary-filter_size_eps-' + str(epsilon) + 'dsr-' + str(downsample_ratio), psnr, ('fsize', 'fsize', 'fsize'), filter_sizes)
+
+
+
+def vary_param_dsr(input_filename, epsilon, filter_size):
+
+    downsample_ratios = np.array([4, 8])
+
+    psnr = np.empty((0, 2), float)
+
+    for downsample_ratio in downsample_ratios:
+
+      # Prepare Images
+      input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
+
+      # approach (1):
+      filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+
+      # approach (2):
+      filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+
+      # Calculate PSNR
+      psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
+      psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+
+      psnr = np.vstack((psnr, np.array([psnr_filtered_1, psnr_filtered_2])))
+
+    psnr = np.transpose(psnr)
+
+    # print table
+    np_table('vary-dsr_eps-' + str(epsilon) + '_filter_size-' + str(filter_size), psnr, ('dsr', 'dsr'), downsample_ratios)
+
+
+
 if __name__ == "__main__":
     start_time = time.time()
 
@@ -324,19 +382,23 @@ if __name__ == "__main__":
     # filter window size
     filter_size = 2 * r + 1
 
-    epsilon = 0.001
+    epsilon = 0.01
 
     # Parse Parameter
     if len(sys.argv) != 2:
         raise ValueError('Wrong arguments')
     input_filename = sys.argv[1]
 
+    # vary dsr
+    vary_param_dsr(input_filename, epsilon, filter_size)
+
     # Prepare Images
     input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
 
 
     # vary params
-    vary_param_epsilon(input_img, guidance_img, filter_size)
+    #vary_param_epsilon(input_img, guidance_img, filter_size, downsample_ratio)
+    #vary_param_filter_size(input_img, guidance_img, epsilon, downsample_ratio)
 
     # Perform Guided Upsampling
 
