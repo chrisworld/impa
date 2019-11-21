@@ -390,7 +390,7 @@ if __name__ == "__main__":
     input_filename = sys.argv[1]
 
     # vary dsr
-    vary_param_dsr(input_filename, epsilon, filter_size)
+    #vary_param_dsr(input_filename, epsilon, filter_size)
 
     # Prepare Images
     input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
@@ -402,11 +402,14 @@ if __name__ == "__main__":
 
     # Perform Guided Upsampling
 
+    t1 = time.time()
     # approach (1):
     filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
 
+    t2 = time.time()
     # approach (2):
     filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+    t3 = time.time()
 
     # Calculate PSNR
     psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
@@ -416,8 +419,8 @@ if __name__ == "__main__":
     psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
 
     # print results
-    print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
-      .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
+    print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f} - time: {:.4f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f} - - time: {:.4f}]'
+      .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, (t2 - t1), psnr_filtered_2, psnr_upsampled_2, (t3 - t2)))
 
     # Plot result
     #plot_result(input_img, guidance_img, filtered_img_2)
