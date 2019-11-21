@@ -178,11 +178,15 @@ def plot_result(input_img, guidance_img, filtered_img):
 if __name__ == "__main__":
     start_time = time.time()
 
-    r = 4
+    e_vec = np.array([0.1, 0.01, 0.001])
+    r_vec = np.array([4, 16, 64])
+    ds_vec = np.array([4, 8])
+    
+    r = 16
     # Set Parameters
-    downsample_ratio = 4 # TODO
+    downsample_ratio =  8# TODO
     filter_size = (2*r+1)# TODO
-    epsilon = 0.01 # TODO
+    #epsilon = 0.1 # TODO
 
     # Parse Parameter
     if len(sys.argv) != 2:
@@ -191,34 +195,76 @@ if __name__ == "__main__":
 
     # Prepare Images
     input_img, guidance_img, initial_img = prepare_imgs(input_filename, downsample_ratio)
+    
+    #io.imsave('guidance_img.png', guidance_img)
+    io.imsave('input_img.png', input_img)
+    
+    """
+    for i in range(e_vec.shape[0]):
+      # Perform Guided Upsampling
+      # approach (1):
+      epsilon = e_vec[i]
+      if i == 2:
+        for k in range(r_vec.shape[0]):
+          r = r_vec[k]
+          filter_size = (2*r+1)
 
-    # Perform Guided Upsampling
-    # approach (1):
-    pre_filter = time.time()
-    filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
-    elapsed1 = time.time() - pre_filter
-  
-    # approach (2):
-    pre_filter = time.time()
-    filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
-    elapsed2 = time.time() - pre_filter
-    #print(title)
-    # Calculate PSNR
+          pre_filter = time.time()
+          filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+          elapsed1 = time.time() - pre_filter
+        
+          # approach (2):
+          pre_filter = time.time()
+          filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+          elapsed2 = time.time() - pre_filter
+          #print(title)
+          # Calculate PSNR
 
-    psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
-    psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
-    title1 = "gitignore/approach1_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed1, psnr_filtered_1, psnr_upsampled_1).replace(".","_")
+          psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
+          psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+          title1 = "gitignore/approach1_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed1, psnr_filtered_1, psnr_upsampled_1).replace(".","_")
 
-    psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
-    psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
-    title2 = "gitignore/approach2_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed2, psnr_filtered_2, psnr_upsampled_2).replace(".","_")
-    print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
-      .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
+          psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+          psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+          title2 = "gitignore/approach2_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed2, psnr_filtered_2, psnr_upsampled_2).replace(".","_")
+          print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
+            .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
 
-    print(title1)
-    io.imsave(title1+".png", filtered_img_1)
-    print(title2)
-    io.imsave(title2+".png", filtered_img_2)
+
+          print(title1)
+          io.imsave(title1+".jpg", filtered_img_1)
+          print(title2)
+          io.imsave(title2+".jpg", filtered_img_2)
+      else: 
+        r = 16
+        filter_size = 2*r + 1
+      pre_filter = time.time()
+      filtered_img_1 = guided_upsampling(resize(input_img, guidance_img.shape), guidance_img, filter_size, epsilon)
+      elapsed1 = time.time() - pre_filter
+        
+        # approach (2):
+      pre_filter = time.time()
+      filtered_img_2 = guided_upsampling(input_img, guidance_img, filter_size, epsilon)
+      elapsed2 = time.time() - pre_filter
+          #print(title)
+          # Calculate PSNR
+
+      psnr_filtered_1 = compute_psnr(filtered_img_1, initial_img)
+      psnr_upsampled_1 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+      title1 = "gitignore/approach1_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed1, psnr_filtered_1, psnr_upsampled_1).replace(".","_")
+
+      psnr_filtered_2 = compute_psnr(filtered_img_2, initial_img)
+      psnr_upsampled_2 = compute_psnr(resize(input_img, (guidance_img.shape[0], guidance_img.shape[1])).astype(np.float32), initial_img)
+      title2 = "gitignore/approach2_ds{}_r{}_e{}_elapsed{:.2f}_psnr{:.2f}_psnrUp{:.2f}".format(downsample_ratio, r, int(abs(np.log10(epsilon))), elapsed2, psnr_filtered_2, psnr_upsampled_2).replace(".","_")
+      print('--results \n downsample ratio: {:d}, filter size: {:d}, epsilon: {:.2f} \n Runtime: {} - \n [Approach 1: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}] \n [Approach 2: PSNR filtered: {:.2f} - PSNR upsampled: {:.2f}]'
+         .format(downsample_ratio, filter_size, epsilon, time.time() - start_time, psnr_filtered_1, psnr_upsampled_1, psnr_filtered_2, psnr_upsampled_2))
+
+
+      print(title1)
+      io.imsave(title1+".jpg", filtered_img_1)
+      print(title2)
+      io.imsave(title2+".jpg", filtered_img_2)
+    """
     # Plot result
-    plot_result(input_img, guidance_img, filtered_img_2)
-    plot_result(input_img, guidance_img, filtered_img_1)
+    #plot_result(input_img, guidance_img, filtered_img_2)
+    #plot_result(input_img, guidance_img, filtered_img_1)
