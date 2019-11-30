@@ -112,17 +112,49 @@ def denoise():
     W = 5  # Window size
     K = W**2  # Number of pixels in each patch
 
-    train_imgs = load_imgs("train_set")
-    val_imgs = load_imgs("valid_set")
-    test_imgs = np.load("test_set.npy", allow_pickle=True).item()
+    train_imgs = load_imgs("../ignore/train_set")
+    val_imgs = load_imgs("../ignore/valid_set")
+    test_imgs = np.load("../ignore/test_set.npy", allow_pickle=True).item()
 
     # TODO: Create array X of shape (N,K) containing N image patches with K pixels in each patch. X are the patches to train the GMM.
 
+    # hop size of patching
+    hop = W
+
+    # init
+    X = np.empty((0, K))
+
+    # make patches
+    for img in train_imgs:
+
+        # make patches
+        X_img = view_as_windows(img, (W, W), step=hop)
+
+        # get patch size
+        n_patches = X_img.shape[0] * X_img.shape[1]
+
+        # concatenate patches
+        X = np.concatenate((X, np.reshape(X_img, (n_patches, K))))
+
+    # (N, K) patches
+    print("X shape: ", X.shape)
+
+
+    # test patches
+    #ski.io.imshow(np.reshape(X[0], (W, W)))
+    #plt.show()
+
+    
+
     gmm = {}
     gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=30)
-    gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6)  # The Wiener filter requires the precision matrix which is the inverted covariance matrix
+     
+    # The Wiener filter requires the precision matrix which is the inverted covariance matrix
+    gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6) 
 
     # TODO: For the train and validation set use the get_noisy_img function to add noise on images.
+
+
     # TODO: Create array F of shape (N,K) containing N image patches with K pixels in each patch. F are the patches to denoise.
 
     # TODO: Set parameter for Algorithm 1
