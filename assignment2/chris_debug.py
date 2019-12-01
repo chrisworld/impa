@@ -95,8 +95,51 @@ def train_gmm(X, C, max_iter, plot=False):
              mu: (C,K) mean for each kernel
              sigma: (C,K,K) covariance matrix of the learned model
     """
-    pass
-    #return alpha, mu, sigma
+    
+    K = X.shape[1]
+
+    # randomly init gaussians
+    # weight of kernels -> must sum to one
+    alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
+
+    # means of each kernel
+    mu = np.random.random((C, K))
+
+    # covariance matrix of each kernel
+    sigma = np.random.random((C, K, K))
+
+    # functions for log sum trick
+    f_zk = lambda x, mu, sigma: - np.dot(np.dot((x - mu).T, (LA.inv(sigma))), (x - mu)) / 2 
+    f_log_ck = lambda a, sigma: np.log(a) - (len(sigma) * np.log(2 * np.pi) + LA.slogdet(sigma)) / 2
+
+    # TODO: 
+    # init vars
+    zk = 0
+    log_ck = 0
+
+    # for each kernel
+    for c in range(C):
+
+        print("kernel: ", c)
+
+        # helper vars
+        zk = f_zk(X[0], mu[c], sigma[c])
+        log_zk = f_log_ck(alpha[c], sigma[c])
+
+    print("zk: ", zk)
+    print("log_ck: ", log_ck)
+
+    # take max of zk
+    #z = max(zk)
+
+    # iterate
+    # for j in range(max_iter):
+
+    #     # log sum trick
+    #     gamma = np.exp(log_ck(alpha, sigma) + zk(x, mu, sigma) - )
+
+
+    return alpha, mu, sigma
 
 
 def load_imgs(dir):
@@ -124,7 +167,7 @@ def denoise():
     # init
     X = np.empty((0, K))
 
-    # make patches
+    # make patches for each file
     for img in train_imgs:
 
         # make patches
