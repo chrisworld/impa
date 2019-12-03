@@ -81,7 +81,7 @@ def get_e_matrix(K):
     :param K: total number of pixels in a patch
     :return: (K,K) projection matrix
     """
-    pass
+    return np.identity(K) - 1 / K * np.outer(np.ones(K), np.ones(K))
 
 
 def train_gmm(X, C, max_iter, plot=False):
