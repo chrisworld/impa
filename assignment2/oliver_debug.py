@@ -85,18 +85,81 @@ def get_e_matrix(K):
 
 
 def train_gmm(X, C, max_iter, plot=False):
-    """
-    Trains a GMM with the EM algorithm
-    :param X: (N,K) N image patches each having K pixels that are used for training the GMM
-    :param C: Number of kernels in the GMM
-    :param max_iter: maximum number of iterations
-    :param plot: set to true to plot steps of the algorithm
-    :return: alpha: (C) weight for each kernel
-             mu: (C,K) mean for each kernel
-             sigma: (C,K,K) covariance matrix of the learned model
-    """
-    pass
-    #return alpha, mu, sigma
+    """
+    Trains a GMM with the EM algorithm
+    :param X: (N,K) N image patches each having K pixels that are used for training the GMM
+    :param C: Number of kernels in the GMM
+    :param max_iter: maximum number of iterations
+    :param plot: set to true to plot steps of the algorithm
+    :return: alpha: (C) weight for each kernel
+             mu: (C,K) mean for each kernel
+             sigma: (C,K,K) covariance matrix of the learned model
+    """
+    # init alpha 
+    N, K = X.shape
+    alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
+    
+    # init mu  
+    mu = np.zeros((C,K))
+
+    # init semetric, semi definit cov
+    sigma = np.zeros((C,K,K))
+    for c in range(C):
+        cov = np.random.random((K, K))
+        sigma[c,:,:] = cov.T @ cov
+
+    # allocate memory
+    arg = np.zeros((C,N))
+
+    for i in range(max_iter):
+        # calculate the argument of the exponent for each
+        # patch and component
+        for c in range(C):
+            cov_c = LA.inv(sigma[c,:,:])
+            for n in range(N):
+                x_i = X[n,:] - mu[c,:]
+                arg[c,n] = -1/2 * x_i @ cov_c @ x_i.T
+        
+        # determine maximum value of the exponent
+        z = np.max(arg)
+
+        # helper matrix housing the scaling of the 
+        # normal distribution for each component
+        beta = 1/(np.sqrt((2*np.pi)**K * LA.det(sigma)))
+
+        # precalculate weight alpha x scaling factor 
+        # for all components
+        a_b = alpha * beta
+        # precalculate argument of the exponent
+        # minus maximal occuring value
+        zk_z = arg - z
+        # calculation of reponsibilities for all components and patches
+        # making use of the log-sum-exp trick to avoid instabilities
+        gamma = np.exp(np.log(a_b[:,np.newaxis]) + zk_z - np.log(np.sum(a_b[:,np.newaxis]*np.exp(zk_z), axis=0)))
+
+        # determining new weights alpha, means mu and 
+        # covariance matrices
+        alpha = np.mean(gamma, axis=1)
+        mu = (gamma @ X) / np.sum(gamma[:,:,np.newaxis], axis=1)
+
+        for n in range(N):
+            for c in range(C):
+                x_i = (X[n,:] - mu[c,:])
+                sigma[c,:,:] += (gamma[c,n] * x_i.T @ x_i)/np.sum(gamma[c,:])
+
+    #temp_ = 0
+    #for n in range(N):
+    #    for c in range(C):
+    #        for k in range(C):
+    #            beta = 1/np.sqrt((2*np.pi)**K * LA.det(cov[k,:,:]))
+    #            temp_ += np.log(alpha[k] * beta * np.exp(arg[k,n]-z))
+    #        beta = 1/np.sqrt((2*np.pi)**K * LA.det(cov[c,:,:]))
+    #        gamma_temp[c,n] = np.log(alpha[c]*beta) + arg[c,n] - z - temp_
+    #        temp_ = 0
+
+
+    #pass
+    return alpha, mu, sigma
 
 
 def load_imgs(dir):
