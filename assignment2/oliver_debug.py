@@ -81,85 +81,83 @@ def get_e_matrix(K):
     :param K: total number of pixels in a patch
     :return: (K,K) projection matrix
     """
-    pass
+    return np.identity(K) - 1 / K * np.outer(np.ones(K), np.ones(K))
 
 
 def train_gmm(X, C, max_iter, plot=False):
-    """
-    Trains a GMM with the EM algorithm
-    :param X: (N,K) N image patches each having K pixels that are used for training the GMM
-    :param C: Number of kernels in the GMM
-    :param max_iter: maximum number of iterations
-    :param plot: set to true to plot steps of the algorithm
-    :return: alpha: (C) weight for each kernel
-             mu: (C,K) mean for each kernel
-             sigma: (C,K,K) covariance matrix of the learned model
-    """
-    # init alpha 
-    N, K = X.shape
-    alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
-    
-    # init mu  
-    mu = np.zeros((C,K))
+    """
+    Trains a GMM with the EM algorithm
+    :param X: (N,K) N image patches each having K pixels that are used for training the GMM
+    :param C: Number of kernels in the GMM
+    :param max_iter: maximum number of iterations
+    :param plot: set to true to plot steps of the algorithm
+    :return: alpha: (C) weight for each kernel
+             mu: (C,K) mean for each kernel
+             sigma: (C,K,K) covariance matrix of the learned model
+    """
 
-    # init semetric, semi definit cov
-    sigma = np.zeros((C,K,K))
-    for c in range(C):
-        cov = np.random.random((K, K))
-        sigma[c,:,:] = cov.T @ cov
+    N, K = X.shape
 
-    # allocate memory
-    arg = np.zeros((C,N))
-
-    for i in range(max_iter):
-        # calculate the argument of the exponent for each
-        # patch and component
-        for c in range(C):
-            cov_c = LA.inv(sigma[c,:,:])
-            for n in range(N):
-                x_i = X[n,:] - mu[c,:]
-                arg[c,n] = -1/2 * x_i @ cov_c @ x_i.T
-        
-        # determine maximum value of the exponent
-        z = np.max(arg)
-
-        # helper matrix housing the scaling of the 
-        # normal distribution for each component
-        beta = 1/(np.sqrt((2*np.pi)**K * LA.det(sigma)))
-
-        # precalculate weight alpha x scaling factor 
-        # for all components
-        a_b = alpha * beta
-        # precalculate argument of the exponent
-        # minus maximal occuring value
-        zk_z = arg - z
-        # calculation of reponsibilities for all components and patches
-        # making use of the log-sum-exp trick to avoid instabilities
-        gamma = np.exp(np.log(a_b[:,np.newaxis]) + zk_z - np.log(np.sum(a_b[:,np.newaxis]*np.exp(zk_z), axis=0)))
-
-        # determining new weights alpha, means mu and 
-        # covariance matrices
-        alpha = np.mean(gamma, axis=1)
-        mu = (gamma @ X) / np.sum(gamma[:,:,np.newaxis], axis=1)
-
-        for n in range(N):
-            for c in range(C):
-                x_i = (X[n,:] - mu[c,:])
-                sigma[c,:,:] += (gamma[c,n] * x_i.T @ x_i)/np.sum(gamma[c,:])
-
-    #temp_ = 0
-    #for n in range(N):
-    #    for c in range(C):
-    #        for k in range(C):
-    #            beta = 1/np.sqrt((2*np.pi)**K * LA.det(cov[k,:,:]))
-    #            temp_ += np.log(alpha[k] * beta * np.exp(arg[k,n]-z))
-    #        beta = 1/np.sqrt((2*np.pi)**K * LA.det(cov[c,:,:]))
-    #        gamma_temp[c,n] = np.log(alpha[c]*beta) + arg[c,n] - z - temp_
-    #        temp_ = 0
+    # initialize mu, alpha and sigma
+    #----------------------------------------------------------
+    alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
+    mu = np.zeros((C,K))
+    sigma = np.zeros((C,K,K))
+    for c in range(C):
+        cov = np.random.randn(K,K)
+        sigma[c,:,:] = cov.T @ cov
+    #----------------------------------------------------------
 
 
-    #pass
-    return alpha, mu, sigma
+
+    # calculate argument of e^(arg) for each patch and kernel
+    #----------------------------------------------------------
+    x = np.zeros((C,N))
+    for i in range(max_iter):
+        for c in range(C):
+            for n in range(N):
+                x_i = X[n,:] - mu[c,:]
+                x[c,n] = -1/2 * x_i @ LA.inv(sigma[c,:,:]) @ x_i.T
+        z_k = np.max(x, axis=1) 
+        #----------------------------------------------------------
+
+        # loop over all patches and sum up along the kernels
+        #----------------------------------------------------------
+        c_z = alpha * 1/np.sqrt((2*np.pi)**K * LA.det(sigma))
+        logArg = c_z[:,np.newaxis] * np.exp(x - z_k[:,np.newaxis])
+
+    #   logArg = np.zeros((C,N))
+    #   for n in range(N):
+    #       for c in range(C):
+    #           logArg[c,n] = alpha[c] * 1/np.sqrt((2*np.pi)**K * LA.det(sigma[c,:,:])) * np.exp(x[c,n]-z_k[c])
+        #----------------------------------------------------------
+        
+        # calculate gamma for each patch
+        #----------------------------------------------------------
+        log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma)[1])
+        gamma = np.exp(log_c[:,np.newaxis] + x - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
+    #   gamma_ = np.zeros((C,N))
+    #   for n in range(N):
+    #       for c in range(C):
+    #           gamma_[c,n] = log_c[c] + x[c,n] - (z_k[c] + np.log(np.sum(logArg[:,n])))
+        #----------------------------------------------------------
+
+        alpha = np.mean(gamma, axis=1)
+        mu = (gamma @ X)/np.sum(gamma[:,:,np.newaxis], axis=1)
+        t = np.zeros((C,K))
+    #   for n in range(N):
+    #       for c in range(C):
+    #           t[c,:] += (gamma[c,n]*X[n,:]) / np.sum(gamma[c,:])
+        sigma = np.zeros((C,K,K))
+        for n in range(N):
+            for c in range(C):
+                x_ = X[n,:] - mu[c,:]
+                x_i = gamma[c,n]* np.outer(x_,x_)
+                sigma[c,:,:] += x_i / np.sum(gamma[c,:])
+            print(sigma[c,:,:])
+
+    #pass
+    return alpha, mu, sigma
 
 
 def load_imgs(dir):
