@@ -54,7 +54,19 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     :param lamb: lambda parameter of the Wiener filter
     :return: (N,K) result of the wiener filter, equivalent to x_i^~ in Algorithm 1
     """
-    pass
+    
+    # get some numbers
+    K = U.shape[1]
+
+    # get k for closest kernel to the patch
+    # TODO:
+    k = 1
+
+    # apply wiener filter
+    xi = np.linalg.inv(lamb * np.identity(K) + E.T * precisions[k] * E) * (lamb * F + precisions[k] * E * means[k])
+
+
+    return xi
 
 
 def get_noisy_img(clean_img):
@@ -167,7 +179,7 @@ def denoise():
     # init
     X = np.empty((0, K))
 
-    # make patches for each file
+    # train set: make patches for each file
     for img in train_imgs:
 
         # make patches
@@ -179,43 +191,80 @@ def denoise():
         # concatenate patches
         X = np.concatenate((X, np.reshape(X_img, (n_patches, K))))
 
+
+    # simple
+    #np.load("../ignore/simple.npy")
+
     # (N, K) patches
-    print("X shape: ", X.shape)
+    print("X: ", X.shape)
 
 
     # test patches
-    #ski.io.imshow(np.reshape(X[0], (W, W)))
+    #ski.io.imshow(np.reshape(X_val[0], (W, W)))
     #plt.show()
 
     
 
     gmm = {}
-    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=30)
+    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X[0:10], C=C, max_iter=30)
      
     # The Wiener filter requires the precision matrix which is the inverted covariance matrix
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6) 
 
+    
     # TODO: For the train and validation set use the get_noisy_img function to add noise on images.
+    train_imgs_noise = get_noisy_img(train_imgs)
+    val_imgs_noise = get_noisy_img(train_imgs)
 
 
     # TODO: Create array F of shape (N,K) containing N image patches with K pixels in each patch. F are the patches to denoise.
 
+    # init
+    X_val_noise = np.empty((0, K))
+
+    # validation set with noise
+    for img in val_imgs_noise:
+
+        # make patches
+        X_img = view_as_windows(img, (W, W), step=hop)
+
+        # get patch size
+        n_patches = X_img.shape[0] * X_img.shape[1]
+
+        # concatenate patches
+        X_val_noise = np.concatenate((X_val_noise, np.reshape(X_img, (n_patches, K))))
+
+    print("X_val_noise: ", X_val_noise.shape)
+
+    # patches to denoise
+    F = X_val_noise[0:10]
+
+
     # TODO: Set parameter for Algorithm 1
-    # lamb =
-    # alpha =
-    # maxiter =
+    lamb = 1
+    alpha = 0.5
+    maxiter = 10
 
     E = get_e_matrix(K)
 
     # Use Algorithm 1 for Patch-Denoising
-    U = F.copy()  # Initialize with the noisy image patches
+    # Initialize with the noisy image patches
+    U = F.copy()  
+
+    # iterations
     for iter in range(0, maxiter):
+
+        # wiener filter
         U = alpha * U + (1 - alpha) * wiener_filter(U, F, E, gmm['precisions'], gmm['mu'], gmm['alpha'], lamb)
+
+        # reconstruction
         u = reconstruct_average(U.reshape(MM, NN, W, W))
 
+        # PSNR
         psnr_denoised = compute_psnr(u, clean_img)
         print("Iter: {} - PSNR: {}".format(iter, psnr_denoised))
 
+    
     psnr_noisy = compute_psnr(noisy_img, clean_img)
     psnr_denoised = compute_psnr(u, clean_img)
 
