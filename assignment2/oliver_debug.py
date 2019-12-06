@@ -112,19 +112,23 @@ def train_gmm(X, C, max_iter, plot=False):
 
     # calculate argument of e^(arg) for each patch and kernel
     #----------------------------------------------------------
-    x = np.zeros((C,N))
+    z = np.zeros((C,N))
     for i in range(max_iter):
+        #print(sigma)
+        #print('---------------------')
+        inv_sigma = LA.inv(sigma)
         for c in range(C):
             for n in range(N):
                 x_i = X[n,:] - mu[c,:]
-                x[c,n] = -1/2 * x_i @ LA.inv(sigma[c,:,:]) @ x_i.T
-        z_k = np.max(x, axis=1) 
+                z[c,n] = -1/2 * x_i @ inv_sigma[c,:,:] @ x_i.T
+        z_k = np.max(z, axis=1) 
+        #z = np.max(x, axis=1)
         #----------------------------------------------------------
 
         # loop over all patches and sum up along the kernels
         #----------------------------------------------------------
-        c_z = alpha * 1/np.sqrt((2*np.pi)**K * LA.det(sigma))
-        logArg = c_z[:,np.newaxis] * np.exp(x - z_k[:,np.newaxis])
+        c_z = alpha * 1/np.sqrt((2*np.pi)**K * np.exp(LA.slogdet(sigma)[1]))
+        logArg = c_z[:,np.newaxis] * np.exp(z - z_k[:,np.newaxis])
 
     #   logArg = np.zeros((C,N))
     #   for n in range(N):
@@ -135,27 +139,30 @@ def train_gmm(X, C, max_iter, plot=False):
         # calculate gamma for each patch
         #----------------------------------------------------------
         log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma)[1])
-        gamma = np.exp(log_c[:,np.newaxis] + x - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
+        gamma = np.exp(log_c[:,np.newaxis] + z - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
+        #gamma = np.exp(log_c[:,np.newaxis] + x - (z + np.log(np.sum(logArg, axis=0))))
     #   gamma_ = np.zeros((C,N))
     #   for n in range(N):
     #       for c in range(C):
     #           gamma_[c,n] = log_c[c] + x[c,n] - (z_k[c] + np.log(np.sum(logArg[:,n])))
         #----------------------------------------------------------
 
-        alpha = np.mean(gamma, axis=1)
+        alpha = 1./N * np.sum(gamma, axis=1)
         mu = (gamma @ X)/np.sum(gamma[:,:,np.newaxis], axis=1)
-        t = np.zeros((C,K))
+
+        addedNoise = np.eye(K) * 10**(-6)
+    #    t = np.zeros((C,K))
     #   for n in range(N):
     #       for c in range(C):
     #           t[c,:] += (gamma[c,n]*X[n,:]) / np.sum(gamma[c,:])
+
         sigma = np.zeros((C,K,K))
         for n in range(N):
             for c in range(C):
                 x_ = X[n,:] - mu[c,:]
-                x_i = gamma[c,n]* np.outer(x_,x_)
+                x_i = np.outer(gamma[c,n]* x_, x_)
                 sigma[c,:,:] += x_i / np.sum(gamma[c,:])
-            print(sigma[c,:,:])
-
+        sigma = sigma + addedNoise
     #pass
     return alpha, mu, sigma
 
