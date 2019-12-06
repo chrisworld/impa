@@ -57,23 +57,45 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     
     # get some numbers
     N, K = U.shape
+    C = weights.shape[0]
 
     # init filtered patches
     xh = np.zeros((N, K))
 
+    # init vars
+    nom = np.zeros((C, K))
+    denom = np.zeros((C, K, K))
+    log_c = np.zeros(C)
+    z = np.zeros(C)
+
+    dim_norm = K / 2 * np.log(2 * np.pi)
+
+
+    # Pre-Computations to make it faster
+    for k in range(C):
+
+        # nominator and denom
+        nom[k] =  np.dot(precisions[k], np.dot(E, means[k]))
+        denom[k] = np.linalg.inv(lamb * np.identity(K) + E.T * precisions[k] * E)  
+
+        # normal distribution normalization term
+        log_c[k] = np.log(weights[k]) - dim_norm + LA.slogdet(precisions[k])[1] / 2
+
+
     # run through each patch
     for i, yi in enumerate(U):
 
-        # get k for closest kernel to the actual patch xi -> F[i]
-        # TODO:
-        k = 1
+        # determine best kernel for actual noisy patch xi -> F[i]
+        for k in range(C):
 
-        # calculate nominator and denom of wiener filter
-        nom = lamb * yi + np.dot(precisions[k], np.dot(E, means[k]))
-        denom = np.linalg.inv(lamb * np.identity(K) + E.T * precisions[k] * E)     
+            # determine exp term in normal dist
+            z[k] = -np.dot( np.dot((F[i] - means[k]).T, precisions[k]), F[i] - means[k] ) / 2
+        
+        # get maximum likelihood
+        k_max = np.argmax(log_c + z)
 
         # apply wiener filter
-        xh[i] = np.dot(denom, nom)
+        xh[i] = np.dot(denom[k_max], lamb * yi + nom[k_max])
 
     return xh
 
@@ -116,49 +138,57 @@ def train_gmm(X, C, max_iter, plot=False):
              mu: (C,K) mean for each kernel
              sigma: (C,K,K) covariance matrix of the learned model
     """
-    
-    K = X.shape[1]
 
-    # randomly init gaussians
-    # weight of kernels -> must sum to one
+    N, K = X.shape
+
+    # initialize mu, alpha and sigma
+    #----------------------------------------------------------
     alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
-
-    # means of each kernel
-    mu = np.random.random((C, K))
-
-    # covariance matrix of each kernel
-    sigma = np.random.random((C, K, K))
-
-    # functions for log sum trick
-    f_zk = lambda x, mu, sigma: - np.dot(np.dot((x - mu).T, (LA.inv(sigma))), (x - mu)) / 2 
-    f_log_ck = lambda a, sigma: np.log(a) - (len(sigma) * np.log(2 * np.pi) + LA.slogdet(sigma)) / 2
-
-    # TODO: 
-    # init vars
-    zk = 0
-    log_ck = 0
-
-    # for each kernel
+    mu = np.zeros((C,K))
+    sigma = np.zeros((C,K,K))
     for c in range(C):
+        cov = np.random.randn(K,K)
+        sigma[c,:,:] = cov.T @ cov
 
-        #print("kernel: ", c)
 
-        # helper vars
-        zk = f_zk(X[0], mu[c], sigma[c])
-        log_zk = f_log_ck(alpha[c], sigma[c])
+    # calculate argument of e^(arg) for each patch and kernel
+    #----------------------------------------------------------
+    z = np.zeros((C,N))
+    for i in range(max_iter):
 
-    #print("zk: ", zk)
-    #print("log_ck: ", log_ck)
+        inv_sigma = LA.inv(sigma)
+        for c in range(C):
+            for n in range(N):
+                x_i = X[n,:] - mu[c,:]
+                z[c,n] = -1/2 * x_i @ inv_sigma[c,:,:] @ x_i.T
+        z_k = np.max(z, axis=1)
+        print(z_k)
 
-    # take max of zk
-    #z = max(zk)
 
-    # iterate
-    # for j in range(max_iter):
+        # loop over all patches and sum up along the kernels
+        #----------------------------------------------------------
+        c_z = alpha * 1/np.sqrt((2*np.pi)**K * np.exp(LA.slogdet(sigma)[1]))
+        logArg = c_z[:,np.newaxis] * np.exp(z - z_k[:,np.newaxis])
 
-    #     # log sum trick
-    #     gamma = np.exp(log_ck(alpha, sigma) + zk(x, mu, sigma) - )
+        
+        # calculate gamma for each patch
+        #----------------------------------------------------------
+        log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma)[1])
+        gamma = np.exp(log_c[:,np.newaxis] + z - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
 
+
+        alpha = 1./N * np.sum(gamma, axis=1)
+        mu = (gamma @ X)/np.sum(gamma[:,:,np.newaxis], axis=1)
+
+        addedNoise = np.eye(K) * 10**(-6)
+
+        sigma = np.zeros((C,K,K))
+        for n in range(N):
+            for c in range(C):
+                x_ = X[n,:] - mu[c,:]
+                x_i = np.outer(gamma[c,n]* x_, x_)
+                sigma[c,:,:] += x_i / np.sum(gamma[c,:])
+        sigma = sigma + addedNoise
 
     return alpha, mu, sigma
 
@@ -214,7 +244,7 @@ def get_patches(imgs, W, K, hop, n=100000000, rand_sel=False):
 
 def denoise():
     # TODO: Find appropiate parameters
-    C = 2  # Number of mixture components
+    C = 8  # Number of mixture components
     W = 5  # Window size
     K = W**2  # Number of pixels in each patch
 
@@ -230,7 +260,7 @@ def denoise():
     hop = W
 
     # training patches
-    X, mmnn_list = get_patches(train_imgs, W, K, hop, n=1000, rand_sel=False)
+    X, mmnn_list = get_patches(train_imgs, W, K, hop, n=1000, rand_sel=True)
 
     # (N, K) patches
     print("X: ", X.shape)
@@ -245,7 +275,7 @@ def denoise():
     # training
 
     gmm = {}
-    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X[0:100], C=C, max_iter=30)
+    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X[0:10000], C=C, max_iter=10)
      
     # The Wiener filter requires the precision matrix which is the inverted covariance matrix
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6) 
@@ -306,7 +336,7 @@ def denoise():
 
     # params
     lamb = 1
-    alpha = 0.6
+    alpha = 0.5
     maxiter = 2
 
     # zero mean average matrix
