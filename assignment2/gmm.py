@@ -54,7 +54,28 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     :param lamb: lambda parameter of the Wiener filter
     :return: (N,K) result of the wiener filter, equivalent to x_i^~ in Algorithm 1
     """
-    pass
+
+    # get some numbers
+    N, K = U.shape
+
+    # init filtered patches
+    xh = np.zeros((N, K))
+
+    # run through each patch
+    for i, yi in enumerate(U):
+
+        # get k for closest kernel to the actual patch xi -> F[i]
+        # TODO:
+        k = 1
+
+        # calculate nominator and denom of wiener filter
+        nom = lamb * yi + np.dot(precisions[k], np.dot(E, means[k]))
+        denom = np.linalg.inv(lamb * np.identity(K) + E.T * precisions[k] * E)     
+
+        # apply wiener filter
+        xh[i] = np.dot(denom, nom)
+
+    return xh
 
 
 def get_noisy_img(clean_img):
@@ -95,8 +116,16 @@ def train_gmm(X, C, max_iter, plot=False):
              mu: (C,K) mean for each kernel
              sigma: (C,K,K) covariance matrix of the learned model
     """
-    pass
-    #return alpha, mu, sigma
+    N, K = X.shape
+    
+    alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
+    mu = np.zeros((C,K))
+    sigma = np.zeros((C,K,K))
+    for c in range(C):
+        cov = np.random.randn(K,K)
+        sigma[c,:,:] = cov.T @ cov
+    
+    return alpha, mu, sigma
 
 
 def load_imgs(dir):
@@ -106,45 +135,171 @@ def load_imgs(dir):
     return imgs
 
 
+def get_patches(imgs, W, K, hop, n=100000000, rand_sel=False):
+    """
+    get patches from list of imgs
+    """
+
+    # init
+    X = np.empty((0, K))
+
+    # patch space list
+    mmnn_list = []
+
+    for img in imgs:
+
+        # make patches
+        X_img = view_as_windows(img, (W, W), step=hop)
+        MM, NN, _, _ = X_img.shape
+
+        # get patch size
+        n_patches = MM * NN
+
+        # concatenate patches
+        X = np.concatenate((X, np.reshape(X_img, (n_patches, K))))
+
+        # add patch dimensions for each file
+        mmnn_list.append((MM, NN))
+
+    # return if n is larger than actual samples
+    if n > X.shape[0]:
+        return X, mmnn_list
+
+    # random or linear selection
+    if rand_sel:
+        # random selection of patches
+        sel = np.random.choice(X.shape[0], n)
+
+    else:
+        # linear selection
+        sel = np.arange(n)
+
+    return X[sel], mmnn_list
+
+
 def denoise():
     # TODO: Find appropiate parameters
     C = 2  # Number of mixture components
     W = 5  # Window size
     K = W**2  # Number of pixels in each patch
 
-    train_imgs = load_imgs("train_set")
-    val_imgs = load_imgs("valid_set")
-    test_imgs = np.load("test_set.npy", allow_pickle=True).item()
+    # TODO: change this to local dir
+    train_imgs = load_imgs("../ignore/train_set")
+    val_imgs = load_imgs("../ignore/valid_set")
+    test_imgs = np.load("../ignore/test_set.npy", allow_pickle=True).item()
 
-    # TODO: Create array X of shape (N,K) containing N image patches with K pixels in each patch. X are the patches to train the GMM.
+    # --
+    # patches for training
+
+    # hop size of patching
+    hop = W
+
+    # training patches
+    X, mmnn_list = get_patches(train_imgs, W, K, hop, n=1000, rand_sel=False)
+
+
+    # --
+    # training
 
     gmm = {}
     gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=30)
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6)  # The Wiener filter requires the precision matrix which is the inverted covariance matrix
 
-    # TODO: For the train and validation set use the get_noisy_img function to add noise on images.
-    # TODO: Create array F of shape (N,K) containing N image patches with K pixels in each patch. F are the patches to denoise.
 
-    # TODO: Set parameter for Algorithm 1
-    # lamb =
-    # alpha =
-    # maxiter =
+    # -- 
+    # add noise to images
 
+    # init noisy imgs lists
+    train_noisy_imgs = []
+    val_noisy_imgs = []
+
+    # noisy training imgs
+    for img in train_imgs:
+        train_noisy_imgs.append(get_noisy_img(img))
+
+    # noisy validation imgs
+    for img in val_imgs:
+        val_noisy_imgs.append(get_noisy_img(img))
+
+
+    # --
+    # create patches for denoising -> F
+
+    # hop size -> should be 1 for the reconstruction
+    hop = 1
+
+    # training patches
+    F, mmnn_list = get_patches(val_noisy_imgs, W, K, hop)
+
+    # (N, K) patches
+    N, K = F.shape
+
+    # --
+    # reconstruction shapes
+
+    # amount of img files
+    n_imgs = len(val_noisy_imgs)
+
+    # amount of patches per image
+    n_patches = N // n_imgs
+
+    # reshape patches witch additional file space dimension
+    F = np.reshape(F, (n_imgs, n_patches, K))
+
+
+    # --
+    # Wiener filter params
+
+    # params
+    lamb = 1
+    alpha = 0.6
+    maxiter = 2
+
+    # zero mean average matrix
     E = get_e_matrix(K)
 
-    # Use Algorithm 1 for Patch-Denoising
-    U = F.copy()  # Initialize with the noisy image patches
-    for iter in range(0, maxiter):
-        U = alpha * U + (1 - alpha) * wiener_filter(U, F, E, gmm['precisions'], gmm['mu'], gmm['alpha'], lamb)
-        u = reconstruct_average(U.reshape(MM, NN, W, W))
+    # for testing
+    image_sel = slice(0, 1, 1)
+    F = F[image_sel]
 
+    # Initialize with the noisy image patches
+    U = F.copy()  
+
+    # --
+    # Wiener filtering
+
+    print("---Wiener filtering---")
+    # for each image
+    for i, clean_img in enumerate(val_imgs[image_sel]):
+
+        print("--image: {}".format(i))
+
+        # iterations
+        for iter in range(0, maxiter):
+
+            # wiener filter
+            U[i] = alpha * U[i] + (1 - alpha) * wiener_filter(U[i], F[i], E, gmm['precisions'], gmm['mu'], gmm['alpha'], lamb)
+
+            # reconstruction
+            u = reconstruct_average(U[i].reshape(mmnn_list[i][0], mmnn_list[i][1], W, W))
+
+            # plot iteration
+            #plt.figure(5, figsize=(10,5))
+            #plt.subplot(121)
+            #plt.imshow(clean_img, cmap="gray")
+            #plt.subplot(122)
+            #plt.imshow(u, cmap="gray")
+            #plt.show()
+
+            # PSNR
+            psnr_denoised = compute_psnr(u, clean_img)
+            print("Iter: {} - PSNR: {}".format(iter, psnr_denoised))
+
+        
+        psnr_noisy = compute_psnr(val_noisy_imgs[i], clean_img)
         psnr_denoised = compute_psnr(u, clean_img)
-        print("Iter: {} - PSNR: {}".format(iter, psnr_denoised))
 
-    psnr_noisy = compute_psnr(noisy_img, clean_img)
-    psnr_denoised = compute_psnr(u, clean_img)
-
-    print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
+        print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
 
 
 if __name__ == "__main__":

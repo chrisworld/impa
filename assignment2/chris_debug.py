@@ -68,13 +68,12 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
         # TODO:
         k = 1
 
+        # calculate nominator and denom of wiener filter
         nom = lamb * yi + np.dot(precisions[k], np.dot(E, means[k]))
         denom = np.linalg.inv(lamb * np.identity(K) + E.T * precisions[k] * E)     
 
         # apply wiener filter
         xh[i] = np.dot(denom, nom)
-
-    print(xh.shape)
 
     return xh
 
@@ -171,27 +170,35 @@ def load_imgs(dir):
     return imgs
 
 
-def get_patches(imgs, W, K, hop, n=100000, rand_sel=False):
+def get_patches(imgs, W, K, hop, n=100000000, rand_sel=False):
     """
     get patches from list of imgs
     """
 
     # init
     X = np.empty((0, K))
+
+    # patch space list
+    mmnn_list = []
+
     for img in imgs:
 
         # make patches
         X_img = view_as_windows(img, (W, W), step=hop)
+        MM, NN, _, _ = X_img.shape
 
         # get patch size
-        n_patches = X_img.shape[0] * X_img.shape[1]
+        n_patches = MM * NN
 
         # concatenate patches
         X = np.concatenate((X, np.reshape(X_img, (n_patches, K))))
 
+        # add patch dimensions for each file
+        mmnn_list.append((MM, NN))
+
     # return if n is larger than actual samples
     if n > X.shape[0]:
-        return X
+        return X, mmnn_list
 
     # random or linear selection
     if rand_sel:
@@ -202,7 +209,7 @@ def get_patches(imgs, W, K, hop, n=100000, rand_sel=False):
         # linear selection
         sel = np.arange(n)
 
-    return X[sel]
+    return X[sel], mmnn_list
 
 
 def denoise():
@@ -215,13 +222,15 @@ def denoise():
     val_imgs = load_imgs("../ignore/valid_set")
     test_imgs = np.load("../ignore/test_set.npy", allow_pickle=True).item()
 
-    # TODO: Create array X of shape (N,K) containing N image patches with K pixels in each patch. X are the patches to train the GMM.
+
+    # --
+    # patches for training
 
     # hop size of patching
     hop = W
 
     # training patches
-    X = get_patches(train_imgs, W, K, hop, n=1000, rand_sel=False)
+    X, mmnn_list = get_patches(train_imgs, W, K, hop, n=1000, rand_sel=False)
 
     # (N, K) patches
     print("X: ", X.shape)
@@ -231,7 +240,9 @@ def denoise():
     #ski.io.imshow(np.reshape(X_val[0], (W, W)))
     #plt.show()
 
-    
+
+    # --
+    # training
 
     gmm = {}
     gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X[0:100], C=C, max_iter=30)
@@ -260,13 +271,16 @@ def denoise():
     # create patches for denoising -> F
 
     # hop size -> should be windows size
-    hop = W
+    hop = 1
+    #hop = 1
 
     # training patches
-    F = get_patches(val_noisy_imgs, W, K, hop)
+    F, mmnn_list = get_patches(val_noisy_imgs, W, K, hop)
 
     # (N, K) patches
     N, K = F.shape
+
+    print("F pre: ", F.shape)
 
     # --
     # reconstruction shapes
@@ -277,20 +291,14 @@ def denoise():
     # amount of patches per image
     n_patches = N // n_imgs
 
-    # pixel space
-    #MM, NN = val_noisy_imgs[0].shape
-
-    # patch space
-    MM = val_noisy_imgs[0].shape[0] // hop
-    NN = val_noisy_imgs[0].shape[1] // hop
-
-    # reshape patches with additional file dimension
+    # reshape patches witch additional file space dimension
     F = np.reshape(F, (n_imgs, n_patches, K))
 
     # some prints
+    print("n_patches: ", N / n_imgs)
     print("noisy val set:: ", len(val_noisy_imgs), val_noisy_imgs[0].shape)
-    print("F: ", F.shape)
-    print("pixels: MM, NN: ", (MM, NN))
+    print("F reshaped: ", F.shape)
+    print("patch space: MM, NN: ", mmnn_list)
 
 
     # --
@@ -298,22 +306,27 @@ def denoise():
 
     # params
     lamb = 1
-    alpha = 0.5
-    maxiter = 10
+    alpha = 0.6
+    maxiter = 2
 
     # zero mean average matrix
     E = get_e_matrix(K)
 
+    # for testing
+    image_sel = slice(0, 1, 1)
+
+    F = F[image_sel]
+    print("F_test: ", F.shape)
+
     # Initialize with the noisy image patches
     U = F.copy()  
-
 
     # --
     # Wiener filtering
 
     print("---Wiener filtering---")
     # for each image
-    for i, clean_img in enumerate(val_imgs):
+    for i, clean_img in enumerate(val_imgs[image_sel]):
 
         print("--image: {}".format(i))
 
@@ -325,16 +338,24 @@ def denoise():
 
             print("Ui: ", U[i].shape)
             # reconstruction
-            u = reconstruct_average(U[i].reshape(MM, NN, W, W))
+            u = reconstruct_average(U[i].reshape(mmnn_list[i][0], mmnn_list[i][1], W, W))
 
             print("u: ", u.shape)
+
+            # plot iteration
+            plt.figure(5, figsize=(10,5))
+            plt.subplot(121)
+            plt.imshow(clean_img, cmap="gray")
+            plt.subplot(122)
+            plt.imshow(u, cmap="gray")
+            plt.show()
 
             # PSNR
             psnr_denoised = compute_psnr(u, clean_img)
             print("Iter: {} - PSNR: {}".format(iter, psnr_denoised))
 
         
-        psnr_noisy = compute_psnr(noisy_img, clean_img)
+        psnr_noisy = compute_psnr(val_noisy_imgs[i], clean_img)
         psnr_denoised = compute_psnr(u, clean_img)
 
         print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
