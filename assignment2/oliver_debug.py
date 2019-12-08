@@ -4,6 +4,7 @@ import skimage as ski
 from skimage.util import view_as_windows
 from skimage.color import rgb2gray
 from numpy import linalg as LA
+from skimage import io
 import numba
 import pickle
 import collections
@@ -40,6 +41,25 @@ def reconstruct_average(P):
     return p
 
 
+def make_dictionary(d):
+    N,M,M = d.shape
+    NH = np.int32(np.sqrt(N))
+    dict = np.zeros((NH*M, NH*M))
+    ii = 0
+    idx = 0
+    for i in range(0,NH):
+        jj = 0
+        for j in range(0,NH):
+            dd = np.copy(d[idx,:,:])
+            dd -= dd.min()
+            dd /= dd.max()
+            dict[ii:ii+M, jj:jj+M] = dd
+            jj += M
+            idx += 1
+        ii +=M
+    return dict
+
+
 def wiener_filter(U, F, E, precisions, means, weights, lamb):
     """
     Applies the wiener filter to N patches each having K pixels.
@@ -54,7 +74,34 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     :param lamb: lambda parameter of the Wiener filter
     :return: (N,K) result of the wiener filter, equivalent to x_i^~ in Algorithm 1
     """
-    pass
+    N, K = U.shape
+    C = weights.shape[0]
+    z = np.zeros((C,N))
+
+    for c in range(C):
+        for n in range(N):
+            # EX-mu
+            x_i = E @ F[n,:] - means[c,:]
+            # calculate argument of exponent
+            z[c,n] = -1/2 * x_i @ precisions[c,:,:] @ x_i.T
+    # calculate log of weighted likelihood
+    k = z + np.log(weights[:,np.newaxis]) - (K/2.0 * np.log(2*np.pi) + 1.0/2.0 * LA.slogdet(LA.inv(precisions))[1])[:,np.newaxis]
+
+    output = np.zeros((N,K))
+    for n in range(N):
+        # determine component with maximum likelihood
+        k_max = np.argmax(k[:,n])
+        # calculate the inverse term of the wiener filter
+        inv_arg = LA.inv(np.eye(K)*lamb + E.T@ precisions[k_max] @ E)
+        # save the result in output
+        output[n,:] = inv_arg @ (U[n,:] * lamb + precisions @ E @ means[k_max,:])
+
+    return output
+
+    # wiener filter: 
+    
+
+    #pass
 
 
 def get_noisy_img(clean_img):
@@ -108,62 +155,34 @@ def train_gmm(X, C, max_iter, plot=False):
         sigma[c,:,:] = cov.T @ cov
     #----------------------------------------------------------
 
-
-
     # calculate argument of e^(arg) for each patch and kernel
     #----------------------------------------------------------
     z = np.zeros((C,N))
     for i in range(max_iter):
-        #print(sigma)
-        #print('---------------------')
-        inv_sigma = LA.inv(sigma)
-        for c in range(C):
-            for n in range(N):
-                x_i = X[n,:] - mu[c,:]
-                z[c,n] = -1/2 * x_i @ inv_sigma[c,:,:] @ x_i.T
+
+        # calculate argument of exponent
+        inv_sigma = LA.inv(sigma + np.eye(K)*1e-6)
+        z = -1./2 * np.einsum('cnp, cnpq, cnq -> cn',(X-mu[:,None,:]), inv_sigma[:,None,:,:], (X-mu[:,None,:]))
         z_k = np.max(z, axis=1) 
-        #z = np.max(x, axis=1)
         #----------------------------------------------------------
 
         # loop over all patches and sum up along the kernels
         #----------------------------------------------------------
-        c_z = alpha * 1/np.sqrt((2*np.pi)**K * np.exp(LA.slogdet(sigma)[1]))
+        c_z = alpha * 1/np.sqrt((2*np.pi)**K * np.exp(LA.slogdet(sigma+np.eye(K)*1e-6)[1]))
         logArg = c_z[:,np.newaxis] * np.exp(z - z_k[:,np.newaxis])
-
-    #   logArg = np.zeros((C,N))
-    #   for n in range(N):
-    #       for c in range(C):
-    #           logArg[c,n] = alpha[c] * 1/np.sqrt((2*np.pi)**K * LA.det(sigma[c,:,:])) * np.exp(x[c,n]-z_k[c])
         #----------------------------------------------------------
         
         # calculate gamma for each patch
         #----------------------------------------------------------
-        log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma)[1])
+        log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma+np.eye(K)*1e-6)[1])
         gamma = np.exp(log_c[:,np.newaxis] + z - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
-        #gamma = np.exp(log_c[:,np.newaxis] + x - (z + np.log(np.sum(logArg, axis=0))))
-    #   gamma_ = np.zeros((C,N))
-    #   for n in range(N):
-    #       for c in range(C):
-    #           gamma_[c,n] = log_c[c] + x[c,n] - (z_k[c] + np.log(np.sum(logArg[:,n])))
+
         #----------------------------------------------------------
+        alpha = np.einsum('cn->c',gamma)/N
+        mu = np.einsum('cn,nk -> ck', gamma, X)/gamma.sum(1)[:,None]
+        sigma = np.einsum('cn,cnp,cnq -> cqp', gamma, X-mu[:,None,:], \
+            X-mu[:,None,:])/gamma.sum(axis=1)[:,None,None]
 
-        alpha = 1./N * np.sum(gamma, axis=1)
-        mu = (gamma @ X)/np.sum(gamma[:,:,np.newaxis], axis=1)
-
-        addedNoise = np.eye(K) * 10**(-6)
-    #    t = np.zeros((C,K))
-    #   for n in range(N):
-    #       for c in range(C):
-    #           t[c,:] += (gamma[c,n]*X[n,:]) / np.sum(gamma[c,:])
-
-        sigma = np.zeros((C,K,K))
-        for n in range(N):
-            for c in range(C):
-                x_ = X[n,:] - mu[c,:]
-                x_i = np.outer(gamma[c,n]* x_, x_)
-                sigma[c,:,:] += x_i / np.sum(gamma[c,:])
-        sigma = sigma + addedNoise
-    #pass
     return alpha, mu, sigma
 
 
@@ -173,33 +192,75 @@ def load_imgs(dir):
 
     return imgs
 
+def plot(mu, precisions, w):
+    plt.figure(2, figsize=(5,5))
+
+    plt.subplot(121)
+    plt.imshow(mu.reshape(w,w), cmap="gray")
+
+    plt.subplot(122)
+
+    eigval, eigvec = LA.eig(precisions)
+    filters = np.zeros((w*w, w, w))
+    for i in range(0,w*w):
+        filters[i,:,:] = eigvec[:,i].reshape(w,w)
+    dict = make_dictionary(filters)
+    plt.imshow(dict, cmap="gray")
+    plt.show()
+
+
 
 def denoise():
     # TODO: Find appropiate parameters
-    C = 2  # Number of mixture components
-    W = 5  # Window size
+    C = 4  # Number of mixture components
+    W = 6  # Window size
     K = W**2  # Number of pixels in each patch
 
-    train_imgs = load_imgs("train_set")
-    val_imgs = load_imgs("valid_set")
-    test_imgs = np.load("test_set.npy", allow_pickle=True).item()
+    train_imgs = load_imgs("../ignore/train_set")
+    val_imgs = load_imgs("../ignore/valid_set")
+    test_imgs = np.load("../ignore/test_set.npy", allow_pickle=True).item()
 
     # TODO: Create array X of shape (N,K) containing N image patches with K pixels in each patch. X are the patches to train the GMM.
+    X = np.zeros((0,K))
+    MM, NN, w, _ = view_as_windows(train_imgs[0], (W,W), step=1).shape
+    for i in train_imgs:
+        X = np.vstack((X, view_as_windows(i, (W,W),step=1).reshape([-1,K])))
+
+    rnd_idx = np.random.choice(range(np.shape(X)[0]), 100, replace=False)
 
     gmm = {}
-    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X, C=C, max_iter=30)
+    gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X[rnd_idx], C=C, max_iter=30)
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6)  # The Wiener filter requires the precision matrix which is the inverted covariance matrix
 
+    plot(gmm['mu'][0], gmm['precisions'][0], w)
     # TODO: For the train and validation set use the get_noisy_img function to add noise on images.
+    # noisy training imgs
+    # init noisy imgs lists
+    train_noisy_imgs = []
+    val_noisy_imgs = []
+
+    for img in train_imgs:
+        train_noisy_imgs.append(get_noisy_img(img))
+
+    # noisy validation imgs
+    for img in val_imgs:
+        val_noisy_imgs.append(get_noisy_img(img))
+
     # TODO: Create array F of shape (N,K) containing N image patches with K pixels in each patch. F are the patches to denoise.
+''' 
+    F = np.zeros((0,K))
+    for i in train_imgs:
+        F = np.vstack((F, view_as_windows(i, (W,W),step=1).reshape([-1,K])))
 
     # TODO: Set parameter for Algorithm 1
-    # lamb =
-    # alpha =
-    # maxiter =
+    lamb = 100
+    alpha = 0.001
+    maxiter = 3
 
     E = get_e_matrix(K)
 
+    clean_img = val_imgs[0]
+    noisy_img = val_noisy_imgs[0]
     # Use Algorithm 1 for Patch-Denoising
     U = F.copy()  # Initialize with the noisy image patches
     for iter in range(0, maxiter):
@@ -213,7 +274,7 @@ def denoise():
     psnr_denoised = compute_psnr(u, clean_img)
 
     print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
-
+'''
 
 if __name__ == "__main__":
     denoise()
