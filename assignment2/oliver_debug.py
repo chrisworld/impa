@@ -76,16 +76,14 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     """
     N, K = U.shape
     C = weights.shape[0]
-    z = np.zeros((C,N))
+    X = F @ E
+    z = -1./2 * np.einsum('cnp, cnpq, cnq -> cn',(X-means[:,None,:]), precisions[:,None,:,:], (X-means[:,None,:]))
 
-    for c in range(C):
-        for n in range(N):
-            # EX-mu
-            x_i = E @ F[n,:] - means[c,:]
-            # calculate argument of exponent
-            z[c,n] = -1/2 * x_i @ precisions[c,:,:] @ x_i.T
+    sign, logdet = LA.slogdet(LA.inv(precisions))
+    # first implement 
+    k = z + np.log(weights)[:,np.newaxis] - (K/2. * np.log(2*np.pi) + 1./2 * logdet )[:,np.newaxis]
     # calculate log of weighted likelihood
-    k = z + np.log(weights[:,np.newaxis]) - (K/2.0 * np.log(2*np.pi) + 1.0/2.0 * LA.slogdet(LA.inv(precisions))[1])[:,np.newaxis]
+    #k = z + np.log(weights[:,np.newaxis]) - (K/2. * np.log(2*np.pi) + 1./2. * LA.slogdet(LA.inv(precisions))[1])[:,np.newaxis]
 
     output = np.zeros((N,K))
     for n in range(N):
@@ -149,12 +147,9 @@ def train_gmm(X, C, max_iter, plot=False):
     #----------------------------------------------------------
     alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
     mu = np.zeros((C,K))
-    sigma = np.zeros((C,K,K))
-    for c in range(C):
-        cov = np.random.randn(K,K)
-        sigma[c,:,:] = cov.T @ cov
+    cov = np.random.randn(K,K)
+    sigma = np.repeat((cov.T @ cov)[np.newaxis,:,:], C, axis=0)
     #----------------------------------------------------------
-
     # calculate argument of e^(arg) for each patch and kernel
     #----------------------------------------------------------
     z = np.zeros((C,N))
@@ -163,25 +158,25 @@ def train_gmm(X, C, max_iter, plot=False):
         # calculate argument of exponent
         inv_sigma = LA.inv(sigma + np.eye(K)*1e-6)
         z = -1./2 * np.einsum('cnp, cnpq, cnq -> cn',(X-mu[:,None,:]), inv_sigma[:,None,:,:], (X-mu[:,None,:]))
-        z_k = np.max(z, axis=1) 
-        #----------------------------------------------------------
-
-        # loop over all patches and sum up along the kernels
-        #----------------------------------------------------------
-        c_z = alpha * 1/np.sqrt((2*np.pi)**K * np.exp(LA.slogdet(sigma+np.eye(K)*1e-6)[1]))
-        logArg = c_z[:,np.newaxis] * np.exp(z - z_k[:,np.newaxis])
+        #z_k = np.max(z, axis=1) 
+        z_k = np.max(z)
         #----------------------------------------------------------
         
-        # calculate gamma for each patch
-        #----------------------------------------------------------
-        log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma+np.eye(K)*1e-6)[1])
-        gamma = np.exp(log_c[:,np.newaxis] + z - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
+        sign, logdet = LA.slogdet(sigma+np.eye(K)*1e-6)
+        # first implement 
+        log_c = np.log(alpha)[:,np.newaxis] - (K/2. * np.log(2*np.pi) + 1./2 * logdet )[:,np.newaxis]
+        #c = alpha * 1./np.sqrt((2*np.pi)**K * sign * np.exp(logdet))
+        gamma = np.exp(z + log_c - (z_k+ np.log(np.sum(np.exp(log_c + z-z_k), axis=0))))
+        #gamma = np.exp(z + log_c - (z_k[:, np.newaxis] + np.log(np.sum(np.exp(log_c + z-z_k[:,np.newaxis]), axis=0))))
 
         #----------------------------------------------------------
         alpha = np.einsum('cn->c',gamma)/N
         mu = np.einsum('cn,nk -> ck', gamma, X)/gamma.sum(1)[:,None]
         sigma = np.einsum('cn,cnp,cnq -> cqp', gamma, X-mu[:,None,:], \
             X-mu[:,None,:])/gamma.sum(axis=1)[:,None,None]
+
+        
+        #print('----------------------------------------------------------------------------------')
 
     return alpha, mu, sigma
 
@@ -213,7 +208,7 @@ def plot(mu, precisions, w):
 def denoise():
     # TODO: Find appropiate parameters
     C = 4  # Number of mixture components
-    W = 6  # Window size
+    W = 9  # Window size
     K = W**2  # Number of pixels in each patch
 
     train_imgs = load_imgs("../ignore/train_set")
@@ -226,7 +221,7 @@ def denoise():
     for i in train_imgs:
         X = np.vstack((X, view_as_windows(i, (W,W),step=1).reshape([-1,K])))
 
-    rnd_idx = np.random.choice(range(np.shape(X)[0]), 100, replace=False)
+    rnd_idx = np.random.choice(range(np.shape(X)[0]), 1000, replace=False)
 
     gmm = {}
     gmm['alpha'], gmm['mu'], gmm['sigma'] = train_gmm(X[rnd_idx], C=C, max_iter=30)
@@ -247,7 +242,7 @@ def denoise():
         val_noisy_imgs.append(get_noisy_img(img))
 
     # TODO: Create array F of shape (N,K) containing N image patches with K pixels in each patch. F are the patches to denoise.
-''' 
+
     F = np.zeros((0,K))
     for i in train_imgs:
         F = np.vstack((F, view_as_windows(i, (W,W),step=1).reshape([-1,K])))
@@ -274,7 +269,7 @@ def denoise():
     psnr_denoised = compute_psnr(u, clean_img)
 
     print("PSNR noisy: {} - PSNR denoised: {}".format(psnr_noisy, psnr_denoised))
-'''
+
 
 if __name__ == "__main__":
     denoise()
