@@ -246,6 +246,12 @@ def plot_filter_iteration(name, C, W, i, psnr_denoised, u):
     plt.savefig(fname + '.png', dpi=150)
     #plt.show()
 
+def plot_val_with_noise(name, u):
+    plt.figure(6)
+    plt.imshow(u, cmap="gray")
+    plt.axis('off')
+    plt.savefig(name + '_noise_' + '.png', dpi=150)
+
 
 def denoise():
 
@@ -253,10 +259,12 @@ def denoise():
     # test parameter set:
 
     # Number of mixture components
-    C_set = [2, 2, 2, 4, 4, 4, 8, 8, 8, 16, 16, 16]
+    #C_set = [2, 2, 2, 4, 4, 4, 8, 8, 8, 16, 16, 16]
+    C_set = [2]
 
     # Window size
-    W_set = [4, 8, 16, 4, 8, 16, 4, 8, 16, 4, 8, 16]
+    #W_set = [4, 8, 16, 4, 8, 16, 4, 8, 16, 4, 8, 16]
+    W_set = [4]
 
     # training set size
     train_set_size = int(1e3)
@@ -276,9 +284,28 @@ def denoise():
     val_imgs, val_file_names = load_imgs("../ignore/valid_set")
     test_imgs = np.load("../ignore/test_set.npy", allow_pickle=True).item()
 
-    #print(train_file_names)
-    #print(val_file_names)
+    # val file names ordered
+    val_fnames = ["old_man", "cliff", 'squirrel', 'tiger', 'royal'] 
 
+    # -- 
+    # add noise to images
+
+    # init noisy imgs lists
+    train_noisy_imgs = []
+    val_noisy_imgs = []
+
+    # noisy training imgs
+    for img in train_imgs:
+        train_noisy_imgs.append(get_noisy_img(img))
+
+    # noisy validation imgs
+    for i, img in enumerate(val_imgs):
+        n_img = get_noisy_img(img)
+        val_noisy_imgs.append(n_img)
+        plot_val_with_noise(val_fnames[i], n_img)
+
+    # --
+    # run all parameters
     for pi in range(len(C_set)):
 
         # actual parameters
@@ -306,22 +333,6 @@ def denoise():
         gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6) 
 
         
-        # -- 
-        # add noise to images
-
-        # init noisy imgs lists
-        train_noisy_imgs = []
-        val_noisy_imgs = []
-
-        # noisy training imgs
-        for img in train_imgs:
-            train_noisy_imgs.append(get_noisy_img(img))
-
-        # noisy validation imgs
-        for img in val_imgs:
-            val_noisy_imgs.append(get_noisy_img(img))
-
-
         # --
         # create patches for denoising -> F
 
@@ -333,6 +344,7 @@ def denoise():
 
         # (N, K) patches
         N, K = F.shape
+
 
         # --
         # reconstruction shapes
@@ -349,16 +361,12 @@ def denoise():
         # zero mean average matrix
         E = get_e_matrix(K)
 
-        # for testing only old man
-        image_sel = slice(0, 1, 1)
-        F = F[image_sel]
-        #print("F_test: ", F.shape)
+        # for testing choose images
+        image_sel = slice(0, len(val_imgs), 1)
 
         # Initialize with the noisy image patches
         U = F.copy()  
 
-        # file names ordered
-        val_fnames = ["old_man", "cliff", 'squirrel', 'tiger', 'royal'] 
 
         # --
         # Wiener filtering
@@ -367,12 +375,10 @@ def denoise():
         print("params gmm: K={}, W={}".format(C, W))
         print("params wiener filter: lamb={}, alpha={}, maxiter={}".format(lamb, alpha, maxiter))
 
-        #psnr = np.empty((0, 2), float)
-
         # for each image
         for i, clean_img in enumerate(val_imgs[image_sel]):
 
-            print("--image: {}".format(i))
+            print("--image: {}".format(val_fnames[i]))
 
             # iterations
             for iter in range(0, maxiter):
@@ -391,10 +397,6 @@ def denoise():
                 #plot_origin_iteration(clean_img, u)
                 plot_filter_iteration(val_fnames[i], C, W, iter, psnr_denoised, u)
 
-                # psnr table
-                #psnr = np.vstack((psnr, np.array([psnr_filtered_1, psnr_filtered_2])))
-
-            
             psnr_noisy = compute_psnr(val_noisy_imgs[i], clean_img)
             psnr_denoised = compute_psnr(u, clean_img)
 
