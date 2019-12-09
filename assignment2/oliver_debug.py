@@ -88,18 +88,27 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     # determine component with highest log likelihood
     k_max = np.argmax(k, axis=0)
 
-    U = w_filter(U, F, E, precisions, means, weights, lamb, k_max)
+    U = w_filter(U, F, E, precisions, means, weights, lamb, k_max, C, K)
 
     return U
 
 @numba.njit
-def w_filter(U, F, E, precisions, means, weights, lamb, k_max):
+def w_filter(U, F, E, precisions, means, weights, lamb, k_max, C, K):
+
+    # Pre-Computations to make it faster
+    # nominator and denom
+    b = np.zeros((C, K))
+    A = np.zeros((C, K, K))
+
+    for k in range(C):
+        # nominator and denom
+        A[k] = np.linalg.inv(E.T@precisions[k]@E + lamb*np.eye(K))
+        b[k] = E.T@(precisions[k]@means[k])
+
     #wiener filter
     N, K = U.shape
     for i in range(0,N):
-        A = np.linalg.inv(E.T@precisions[k_max[i]]@E + lamb*np.eye(K))
-        b = E.T@(precisions[k_max[i]]@means[k_max[i]])
-        U[i,:] = A@(b+lamb*F[i,:])
+        U[i,:] = A[k_max[i]]@(b[k_max[i]]+lamb*F[i,:])
     return U
     
 

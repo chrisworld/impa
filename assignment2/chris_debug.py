@@ -145,50 +145,35 @@ def train_gmm(X, C, max_iter, plot=False):
     #----------------------------------------------------------
     alpha = np.squeeze(np.random.dirichlet(np.ones(C), size=1))
     mu = np.zeros((C,K))
-    sigma = np.zeros((C,K,K))
-    for c in range(C):
-        cov = np.random.randn(K,K)
-        sigma[c,:,:] = cov.T @ cov
-
-
+    cov = np.random.randn(K,K)
+    sigma = np.repeat((cov.T @ cov)[np.newaxis,:,:], C, axis=0)
+    #----------------------------------------------------------
     # calculate argument of e^(arg) for each patch and kernel
     #----------------------------------------------------------
     z = np.zeros((C,N))
     for i in range(max_iter):
 
-        inv_sigma = LA.inv(sigma)
-        for c in range(C):
-            for n in range(N):
-                x_i = X[n,:] - mu[c,:]
-                z[c,n] = -1/2 * x_i @ inv_sigma[c,:,:] @ x_i.T
-        z_k = np.max(z, axis=1)
-        print(z_k)
-
-
-        # loop over all patches and sum up along the kernels
+        # calculate argument of exponent
+        inv_sigma = LA.inv(sigma + np.eye(K)*1e-6)
+        z = -1./2 * np.einsum('cnp, cnpq, cnq -> cn',(X-mu[:,None,:]), inv_sigma[:,None,:,:], (X-mu[:,None,:]))
+        z_k = np.max(z, axis=1) 
+        #z_k = np.max(z)
         #----------------------------------------------------------
-        c_z = alpha * 1/np.sqrt((2*np.pi)**K * np.exp(LA.slogdet(sigma)[1]))
-        logArg = c_z[:,np.newaxis] * np.exp(z - z_k[:,np.newaxis])
-
         
-        # calculate gamma for each patch
+        _, logdet = LA.slogdet(sigma+np.eye(K)*1e-6)
+        # pre calculate log of c for all components
+        log_c = np.log(alpha)[:,np.newaxis] - (K/2. * np.log(2*np.pi) + 1./2 * logdet )[:,np.newaxis]
+        #c = alpha * 1./np.sqrt((2*np.pi)**K * sign * np.exp(logdet))
+        #gamma = np.exp(z + log_c - (z_k+ np.log(np.sum(np.exp(log_c + z-z_k), axis=0))))
+        gamma = np.exp(z + log_c - (z_k[:, np.newaxis] + \
+            np.log(np.sum(np.exp(log_c + z-z_k[:,np.newaxis]), axis=0))))
+
+        # calculation of new alpha, mu and cov
         #----------------------------------------------------------
-        log_c = np.log(alpha) - (K/2 * np.log(2*np.pi) + 1/2 * LA.slogdet(sigma)[1])
-        gamma = np.exp(log_c[:,np.newaxis] + z - (z_k[:,np.newaxis] + np.log(np.sum(logArg, axis=0))))
-
-
-        alpha = 1./N * np.sum(gamma, axis=1)
-        mu = (gamma @ X)/np.sum(gamma[:,:,np.newaxis], axis=1)
-
-        addedNoise = np.eye(K) * 10**(-6)
-
-        sigma = np.zeros((C,K,K))
-        for n in range(N):
-            for c in range(C):
-                x_ = X[n,:] - mu[c,:]
-                x_i = np.outer(gamma[c,n]* x_, x_)
-                sigma[c,:,:] += x_i / np.sum(gamma[c,:])
-        sigma = sigma + addedNoise
+        alpha = np.einsum('cn->c',gamma)/N
+        mu = np.einsum('cn,nk -> ck', gamma, X)/gamma.sum(1)[:,None]
+        sigma = np.einsum('cn,cnp,cnq -> cqp', gamma, X-mu[:,None,:], \
+            X-mu[:,None,:])/gamma.sum(axis=1)[:,None,None]
 
     return alpha, mu, sigma
 
