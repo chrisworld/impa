@@ -227,6 +227,27 @@ def get_patches(imgs, W, K, hop, n=100000000, rand_sel=False):
     return X[sel], mmnn_list
 
 
+def plot_origin_iteration(clean_img, u):
+
+    # plot iteration
+    plt.figure(5, figsize=(10,5))
+    plt.subplot(121)
+    plt.imshow(clean_img, cmap="gray")
+    plt.subplot(122)
+    plt.imshow(u, cmap="gray")
+    #plt.savefig(name + '.png', dpi=150)
+    plt.show()
+
+
+def plot_filter_iteration(name, u):
+
+    # plot iteration
+    plt.figure(5, figsize=(10,5))
+    plt.imshow(u, cmap="gray")
+    plt.savefig(name + '.png', dpi=150)
+    plt.show()
+
+
 def denoise():
     # TODO: Find appropiate parameters
     C = 8  # Number of mixture components
@@ -357,13 +378,7 @@ def denoise():
 
             print("u: ", u.shape)
 
-            # plot iteration
-            plt.figure(5, figsize=(10,5))
-            plt.subplot(121)
-            plt.imshow(clean_img, cmap="gray")
-            plt.subplot(122)
-            plt.imshow(u, cmap="gray")
-            plt.show()
+
 
             # PSNR
             psnr_denoised = compute_psnr(u, clean_img)
