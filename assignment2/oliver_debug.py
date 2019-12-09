@@ -175,17 +175,18 @@ def train_gmm(X, C, max_iter, plot=False):
         #z_k = np.max(z)
         #----------------------------------------------------------
         
-        _, logdet = LA.slogdet(sigma+np.eye(K)*1e-6)
+        _, logdet = LA.slogdet(sigma)
         # pre calculate log of c for all components
         log_c = np.log(alpha)[:,np.newaxis] - (K/2. * np.log(2*np.pi) + 1./2 * logdet )[:,np.newaxis]
         #c = alpha * 1./np.sqrt((2*np.pi)**K * sign * np.exp(logdet))
         #gamma = np.exp(z + log_c - (z_k+ np.log(np.sum(np.exp(log_c + z-z_k), axis=0))))
         gamma = np.exp(z + log_c - (z_k[:, np.newaxis] + \
             np.log(np.sum(np.exp(log_c + z-z_k[:,np.newaxis]), axis=0))))
+        gamma[gamma< 1e-9] = 1e-9
 
         # calculation of new alpha, mu and cov
         #----------------------------------------------------------
-        alpha = np.einsum('cn->c',gamma)/N
+        alpha = np.einsum('cn->c',gamma)/N        
         mu = np.einsum('cn,nk -> ck', gamma, X)/gamma.sum(1)[:,None]
         sigma = np.einsum('cn,cnp,cnq -> cqp', gamma, X-mu[:,None,:], \
             X-mu[:,None,:])/gamma.sum(axis=1)[:,None,None]
