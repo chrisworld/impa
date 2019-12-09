@@ -89,13 +89,19 @@ def wiener_filter(U, F, E, precisions, means, weights, lamb):
     # determine component with highest log likelihood
     k_max = np.argmax(k, axis=0)
 
-    # wiener filter
+    U = w_filter(U, F, E, precisions, means, weights, lamb, k_max)
+
+    return U
+
+@numba.njit
+def w_filter(U, F, E, precisions, means, weights, lamb, k_max):
+    #wiener filter
+    N, K = U.shape
     for i in range(0,N):
         A = np.linalg.inv(E.T@precisions[k_max[i]]@E + lamb*np.eye(K))
         b = E.T@(precisions[k_max[i]]@means[k_max[i]])
         U[i,:] = A@(b+lamb*F[i,:])
     return U
-
     
 
     #pass
@@ -173,9 +179,6 @@ def train_gmm(X, C, max_iter, plot=False):
         mu = np.einsum('cn,nk -> ck', gamma, X)/gamma.sum(1)[:,None]
         sigma = np.einsum('cn,cnp,cnq -> cqp', gamma, X-mu[:,None,:], \
             X-mu[:,None,:])/gamma.sum(axis=1)[:,None,None]
-
-        
-        #print('----------------------------------------------------------------------------------')
 
     return alpha, mu, sigma
 
@@ -256,26 +259,17 @@ def denoise():
     val_imgs = load_imgs("../ignore/valid_set")
     test_imgs = np.load("../ignore/test_set.npy", allow_pickle=True).item()
 
-
+    MM, NN, w, _ = view_as_windows(train_imgs[0], (W,W), step=1).shape
     # --
     # patches for training
 
     # hop size of patching
-    hop = W
+    hop = 1
 
     # training patches
     X, mmnn_list = get_patches(train_imgs, W, K, hop, n=10000, rand_sel=True)
 
-    # (N, K) patches
-    #print("X: ", X.shape)
 
-
-    # test patches
-    #ski.io.imshow(np.reshape(X_val[0], (W, W)))
-    #plt.show()
-
-
-    #rnd_idx = np.random.choice(range(np.shape(X)[0]), 10000, replace=False)
     # --
     # training
 
@@ -284,6 +278,7 @@ def denoise():
      
     # The Wiener filter requires the precision matrix which is the inverted covariance matrix
     gmm['precisions'] = np.linalg.inv(gmm['sigma'] + np.eye(K) * 1e-6) 
+    plot(gmm['mu'][0], gmm['precisions'][0], W)
 
     
     # -- 
@@ -342,7 +337,7 @@ def denoise():
     # params
     lamb = 100
     alpha = 0.001
-    maxiter = 5
+    maxiter = 2
 
     # zero mean average matrix
     E = get_e_matrix(K)
