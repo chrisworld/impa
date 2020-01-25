@@ -17,18 +17,10 @@ def calc_wta(cv):
 
     # run though each pixel
     for y in np.arange(H):
-
         for x in np.arange(W):
 
             # arg min of all disparities
             wta[y, x] = np.argmin(cv[y, x], axis=0)
-            #print("wta: [{}, {}] idx: [{}]".format(y, x, wta[y, x]))
-
-    # plot result
-    plt.figure()
-    plt.imshow(wta, cmap='plasma')
-    plt.colorbar()
-    plt.show()
 
     return wta
 
@@ -65,32 +57,29 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
         # move right image to right x-direction
         Imgs_d[d] = np.roll(right_image, d, axis=1)
 
-        #plt.figure()
-        #plt.imshow(Imgs_d[:, :, d], cmap='gray')
-        #plt.tight_layout()
-        #plt.show()
-
     # hop size in pixel
     hop = 1
-
-    #I0_patches = view_as_windows(left_image, (radius, radius), step=hop)
-    #print("I0_patches", I0_patches.shape)
 
     # copy left image
     I0 = np.copy(left_image)
 
+    # create patches of left image
+    I0_patches = view_as_windows(I0, (radius, radius), step=hop)
+
+    # get patch shape
+    H_p, W_p, rh, rw = I0_patches.shape
+
     # init cv
-    cv = np.zeros((H, W, D))
+    cv = np.zeros((H_p, W_p, D))
+    
+    # compare left with right image with different disparities
+    for d, Id in enumerate(Imgs_d):
 
-    for d, I_d in enumerate(Imgs_d):
+        # get patches
+        Id_patches = view_as_windows(Id, (radius, radius), step=hop)
 
-        #I_d_patches = view_as_windows(I_d, (radius, radius), step=hop)
-        #print("I_d_patches: ", I_d_patches.shape)
-
-        # similarity measure sad
-
-        # compute cost volume
-        cv[:, :, d] = np.abs(I0 - I_d)
+        # compute cost volume with similarity measure sad
+        cv[:, :, d] = np.sum(np.sum(np.abs(I0_patches - Id_patches), axis=2), axis=2)
 
     return cv
 
@@ -104,8 +93,44 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     :param radius: Radius of the filter
     :return: cost volume of size (H,W,D)
     """
-    # TODO
-    return
+
+    # get dimensions
+    H, W = left_image.shape
+
+    # get disparity images I(x-d, y)
+    Imgs_d = np.zeros((D, H, W))
+
+    # calculate disparity image
+    for d in np.arange(D):
+
+        # move right image to right x-direction
+        Imgs_d[d] = np.roll(right_image, d, axis=1)
+
+    # hop size in pixel
+    hop = 1
+
+    # copy left image
+    I0 = np.copy(left_image)
+
+    # create patches of left image
+    I0_patches = view_as_windows(I0, (radius, radius), step=hop)
+
+    # get patch shape
+    H_p, W_p, rh, rw = I0_patches.shape
+
+    # init cv
+    cv = np.zeros((H_p, W_p, D))
+    
+    # compare left with right image with different disparities
+    for d, Id in enumerate(Imgs_d):
+
+        # get patches
+        Id_patches = view_as_windows(Id, (radius, radius), step=hop)
+
+        # compute cost volume with similarity measure sad
+        cv[:, :, d] = np.sum(np.sum(np.power(I0_patches - Id_patches, 2), axis=2), axis=2)
+
+    return cv
 
 
 def compute_cost_volume_ncc(left_image, right_image, D, radius):
@@ -117,8 +142,58 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     :param radius: Radius of the filter
     :return: cost volume of size (H,W,D)
     """
-    # TODO
-    return
+
+    # get dimensions
+    H, W = left_image.shape
+
+    # get disparity images I(x-d, y)
+    Imgs_d = np.zeros((D, H, W))
+
+    # calculate disparity image
+    for d in np.arange(D):
+
+        # move right image to right x-direction
+        Imgs_d[d] = np.roll(right_image, d, axis=1)
+
+    # hop size in pixel
+    hop = 1
+
+    # copy left image
+    I0 = np.copy(left_image)
+
+    # create patches of left image
+    I0_patches = view_as_windows(I0, (radius, radius), step=hop)
+
+    # calculate means
+    mu_I0_p = np.mean(np.mean(I0_patches, axis=2), axis=2)
+
+    # free of mean
+    I0_p_mu = I0_patches - mu_I0_p[:, :, np.newaxis, np.newaxis]
+    I0_p_mu_sq = np.power(I0_p_mu, 2)
+
+    # make it free of mean
+    H_p, W_p, rh, rw = I0_patches.shape
+
+    # init cv
+    cv = np.zeros((H_p, W_p, D))
+    
+    # compare left with right image with different disparities
+    for d, Id in enumerate(Imgs_d):
+
+        # get patches
+        Id_patches = view_as_windows(Id, (radius, radius), step=hop)
+
+        # calculate means
+        mu_Id_p = np.mean(np.mean(Id_patches, axis=2), axis=2)
+
+        # make it free of mean
+        Id_p_mu = Id_patches - mu_Id_p[:, :, np.newaxis, np.newaxis]
+        Id_p_mu_sq = np.power(Id_p_mu, 2)
+
+        # calculate cost-volume
+        cv[:, :, d] = -1 * np.sum(np.sum(I0_p_mu * Id_p_mu, axis=3), axis=2) / np.sqrt( np.sum(np.sum(I0_p_mu_sq, axis=3), axis=2) * np.sum(np.sum(Id_p_mu_sq, axis=3), axis=2) ) 
+
+    return cv
 
 
 def get_pairwise_costs(H, W, D, weights=None):
@@ -157,10 +232,26 @@ def plot_imgs(im0g, im1g):
     plt.show()
 
 
+def plot_wta(wta):
+    """
+    plot winner takes all algorithm
+    """
+    plt.figure()
+    #plt.imshow(wta, cmap='plasma')
+    plt.imshow(wta, cmap='jet')
+    plt.colorbar()
+    plt.tight_layout()
+    plt.axis('off')
+    plt.show()
+
+
 def main():
 
     # path to images
     img_path = '../ignore/ass3_data/'
+
+    # some pre computed files
+    cv_file = img_path + 'cv.npy'
 
     # Load input images
     im0 = imread(img_path + "Adirondack_left.png")
@@ -182,13 +273,24 @@ def main():
     filter_radius = 5
 
     # Use either SAD, NCC or SSD to compute the cost volume
-    cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
+    #cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
     #cv = compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
-    #cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
+    cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
 
+    # save cost volume
+    #np.save(cv_file, cv)
 
-    # compute wta algorithm
-    calc_wta(cv)
+    # load pre computed cv file
+    #cv = np.load(cv_file)
+
+    # print cv shape
+    print("cv: ", cv.shape)
+
+    # compute wta algorithm -> merely on cost-volume
+    wta = calc_wta(cv)
+
+    # plot wta
+    plot_wta(wta)
 
     # Compute pairwise costs
     H, W, D = cv.shape
