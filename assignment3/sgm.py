@@ -206,8 +206,37 @@ def get_pairwise_costs(H, W, D, weights=None):
              Note: If weight=None, then each spatial position gets exactly the same pairwise costs.
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
-    # TODO
-    return
+
+    # hyper params
+    L1 = 0.1
+    L2 = 0.2
+
+    # no weights
+    if weights == None:
+
+        # all the same pairwise costs
+        costs = np.ones((D, D)) * L2
+
+        # run through disparity map
+        for i, zi in enumerate(range(D)):
+            for j, zj in enumerate(range(D)):
+
+                # same label
+                if zi == zj:
+
+                    # zeros cost on same level
+                    costs[i, j] = 0;
+
+                # one label diff
+                elif np.abs(zi - zj) == 1:
+
+                    # cost for one level diff
+                    costs[i, j] = L1;
+
+        # broadcast the costs as they are the same for each nodes
+        return np.broadcast_to(costs, (H, W, D, D))
+
+    return 0
 
 
 def compute_sgm(cv, f):
@@ -246,7 +275,7 @@ def plot_wta(wta):
 
 
 def main():
-    
+
     # path to images
     img_path = '../ignore/ass3_data/'
 

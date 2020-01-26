@@ -25,16 +25,6 @@ def calc_wta(cv):
     return wta
 
 
-def dp_chain(g, f, m):
-    '''
-        g: unary costs with shape (H,W,D)
-        f: pairwise costs with shape (H,W,D,D)
-        m: messages with shape (H,W,D)
-    '''
-    # TODO
-    return
-
-
 def compute_cost_volume_sad(left_image, right_image, D, radius):
     """
     Sum of Absolute Differences (SAD) cost volume
@@ -206,8 +196,71 @@ def get_pairwise_costs(H, W, D, weights=None):
              Note: If weight=None, then each spatial position gets exactly the same pairwise costs.
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
-    # TODO
-    return
+
+    # hyper params
+    L1 = 0.1
+    L2 = 0.2
+
+    # no weights
+    if weights == None:
+
+        # all the same pairwise costs
+        costs = np.ones((D, D)) * L2
+
+        # run through disparity map
+        for i, zi in enumerate(range(D)):
+            for j, zj in enumerate(range(D)):
+
+                # same label
+                if zi == zj:
+
+                    # zeros cost on same level
+                    costs[i, j] = 0;
+
+                # one label diff
+                elif np.abs(zi - zj) == 1:
+
+                    # cost for one level diff
+                    costs[i, j] = L1;
+
+        # broadcast the costs as they are the same for each nodes
+        return np.broadcast_to(costs, (H, W, D, D))
+
+    return 0
+
+
+def binary_costs(z, f, L1=0.1, L2=0.2):
+    """
+    binary cost between two nodes
+    z: labels [ch x nodes]
+    f: pairwise cost [ch x nodes x disparities x disparities]
+    """
+
+    fb = np.copy(f)
+
+
+
+    # else
+    return 
+
+
+def dp_chain(g, f, m):
+    """
+        g: unary costs with shape (H,W,D)
+        f: pairwise costs with shape (H,W,D,D)
+        m: messages with shape (H,W,D)
+    """
+    
+    # get shape 
+    H, W, D = m.shape
+
+    # g as channel: [ch x nodes x disparities]
+    for i in range(W - 1):
+
+        # parallel computation
+        m[:, i + 1] = np.min(m[:, i, :, np.newaxis] + f[:, i] + g[:, i, :, np.newaxis], axis=1)
+
+    return m
 
 
 def compute_sgm(cv, f):
@@ -217,8 +270,67 @@ def compute_sgm(cv, f):
     :param f: Pairwise costs of shape (H,W,D,D)
     :return: pixel wise disparity map of shape (H,W)
     """
-    # TODO
-    return
+
+    # get shape
+    H, W, D = cv.shape
+
+    # init disparity map
+    disp_map = np.zeros((H, W))
+
+    # for all four directions
+    directions = ['L', 'R', 'U', 'D']
+
+    # init messages
+    m = np.zeros((len(directions), H, W, D))
+
+    # calculate disparity map
+    z = calc_wta(cv)
+
+    # compute paiwise costs
+    for a, direction in enumerate(directions):
+
+        print("message direction: ", direction)
+
+        # horizontal backward messages
+        if direction == 'L':
+
+            # run the chain
+            m[a] = dp_chain(cv[:, ::-1], f, m[a])
+
+        # horizontal forward messages
+        elif direction == 'R':
+
+            # run the chain
+            m[a] = dp_chain(cv, f, m[a])
+
+        # vertical backward messages
+        elif direction == 'U':
+
+            # run the chain
+            m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1)[:, ::-1], np.moveaxis(f, 0, 1), np.moveaxis(m[a], 0, 1)), 0, 1)
+
+        # vertical forward messages
+        elif direction == 'D':
+
+            # run the chain
+            m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1), np.moveaxis(f, 0, 1), np.moveaxis(m[a], 0, 1)), 0, 1)
+
+    # believes
+    b = np.zeros((H, W, D))
+
+    print("compute believes: ")
+
+    for i in range(H):
+        for j in range(W):
+
+            b[i, j] = cv[i, j] + np.sum(m[:, i, j, :], axis=0)
+
+    # get disp_map
+    print("disp map: ")
+
+    disp_map = np.argmin(b, axis=2)
+
+    return disp_map
 
 
 def plot_imgs(im0g, im1g):
@@ -232,13 +344,13 @@ def plot_imgs(im0g, im1g):
     plt.show()
 
 
-def plot_wta(wta):
+def plot_disp_map(disp_map):
     """
     plot winner takes all algorithm
     """
     plt.figure()
     #plt.imshow(wta, cmap='plasma')
-    plt.imshow(wta, cmap='jet')
+    plt.imshow(disp_map, cmap='jet')
     plt.colorbar()
     plt.tight_layout()
     plt.axis('off')
@@ -275,34 +387,37 @@ def main():
     # Use either SAD, NCC or SSD to compute the cost volume
     #cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
     #cv = compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
-    cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
+    #cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
 
     # save cost volume
     #np.save(cv_file, cv)
 
     # load pre computed cv file
-    #cv = np.load(cv_file)
+    cv = np.load(cv_file)
 
     # print cv shape
     print("cv: ", cv.shape)
 
     # compute wta algorithm -> merely on cost-volume
-    wta = calc_wta(cv)
+    d_wta = calc_wta(cv)
+    print("d_wta: ", d_wta.shape)
 
     # plot wta
-    plot_wta(wta)
+    #plot_disp_map(d_wta)
 
     # Compute pairwise costs
     H, W, D = cv.shape
     f = get_pairwise_costs(H, W, D)
 
-    # Compute SGM
-    disp = compute_sgm(cv, f)
+    print("f: ", f.shape)
 
-    # Plot result
-    plt.figure()
-    plt.imshow(disp)
-    plt.show()
+    # Compute SGM
+    d_sgm = compute_sgm(cv, f)
+
+    print("disp_map sgm: ", d_sgm.shape)
+
+    # plot disparity map
+    plot_disp_map(d_sgm)
 
 
 if __name__== "__main__":
