@@ -49,6 +49,26 @@ def get_padded_disp_imgs(left_image, right_image, D, radius):
     return I0, I1_d
 
 
+def compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method='NCC'):
+    """
+    Select cost volume from distance measure methods SAD, NCC or SSD
+    """
+
+    if d_method == 'SAD':
+        return compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
+
+    elif d_method == 'SSD':
+        return compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
+
+    elif d_method == 'NCC':
+        return compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
+
+    print('***no valid distance measure method selected, select from [SAD, SSD, NCC]')
+
+    return 0
+
+
+
 def compute_cost_volume_sad(left_image, right_image, D, radius):
     """
     Sum of Absolute Differences (SAD) cost volume
@@ -64,9 +84,6 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
 
     # hop size in pixel
     hop = 1
-
-    # copy left image
-    I0 = np.copy(left_image)
 
     # create patches of left image
     I0_patches = view_as_windows(I0, (radius, radius), step=hop)
@@ -142,20 +159,17 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     # hop size in pixel
     hop = 1
 
-    # copy left image
-    I0 = np.copy(left_image)
-
     # create patches of left image
     I0_patches = view_as_windows(I0, (radius, radius), step=hop)
 
     # calculate means
     mu_I0_p = np.mean(np.mean(I0_patches, axis=2), axis=2)
 
-    # free of mean
+    # substract mean
     I0_p_mu = I0_patches - mu_I0_p[:, :, np.newaxis, np.newaxis]
     I0_p_mu_sq = np.power(I0_p_mu, 2)
 
-    # make it free of mean
+    # patch shapes
     H_p, W_p, rh, rw = I0_patches.shape
 
     # init cv
@@ -170,7 +184,7 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
         # calculate means
         mu_Id_p = np.mean(np.mean(Id_patches, axis=2), axis=2)
 
-        # make it free of mean
+        # substract of mean
         Id_p_mu = Id_patches - mu_Id_p[:, :, np.newaxis, np.newaxis]
         Id_p_mu_sq = np.power(Id_p_mu, 2)
 
@@ -261,13 +275,10 @@ def compute_sgm(cv, f):
     # init disparity map
     disp_map = np.zeros((H, W))
 
-    # calculate disparity map
-    #z = calc_wta(cv)
-
     # compute paiwise costs
     for a, direction in enumerate(directions):
 
-        print("message direction: ", direction)
+        #print("message direction: ", direction)
 
         # horizontal backward messages
         if direction == 'L':
@@ -325,24 +336,20 @@ def compute_sgm(cv, f):
             # plt.imshow(calc_wta(m[a]), cmap='jet')
             # plt.show()
 
-
-    print("compute believes: ")
-
     # compute believes
     b = cv + np.sum(m, axis=0)
 
     # get disp_map
-    print("disp map: ")
     disp_map = np.argmin(b, axis=2)
 
     return disp_map
 
 
-def acc_disp_map(d_img0, d_img1, X=1):
+def acc_disp_map(d_img0, d_img1, mask, X=1):
     """
     accuracy calculation of disparity maps
     """
-    return np.mean(np.abs(d_img0 - d_img1) <= X)
+    return np.sum(mask * (np.abs(d_img0 - d_img1) <= X)) / np.sum(mask == 1)
 
 
 def plot_imgs(im0g, im1g):
@@ -356,7 +363,7 @@ def plot_imgs(im0g, im1g):
     plt.show()
 
 
-def plot_disp_map(disp_map):
+def plot_disp_map(disp_map, d_method, L1, L2, acc, print_to_file=True, fig_path='./'):
     """
     plot winner takes all algorithm
     """
@@ -366,13 +373,19 @@ def plot_disp_map(disp_map):
     plt.colorbar()
     plt.tight_layout()
     plt.axis('off')
-    plt.show()
+
+    if print_to_file:
+        plt.savefig(fig_path + 'disp_map_' + d_method + '_' + str(L1).replace('.', 'p') + '_' + str(L2).replace('.', 'p') + '_acc-' + str(acc)[0:6].replace('.', 'p') + '.png', dpi=150)
+
+    else:
+        plt.show()
 
 
 def main():
 
-    # path to images
+    # path to img data and save location
     img_path = '../ignore/ass3_data/'
+    fig_path = '../ignore/ass3_data/figs/'
 
     # some pre computed files
     cv_file = img_path + 'cv.npy'
@@ -381,8 +394,8 @@ def main():
     # Load input images
     im0 = imread(img_path + "Adirondack_left.png")
     im1 = imread(img_path + "Adirondack_right.png")
-
     d_gt = imread(img_path + "Adirondack_gt.png")
+    mask = imread(img_path + "Adirondack_mask.png") // 255
 
     # convert to gray values
     im0g = rgb2gray(im0)
@@ -392,7 +405,11 @@ def main():
     print("image1 shape: ", im0g.shape)
     print("image2 shape: ", im1g.shape)
     print("gt shape: ", d_gt.shape)
-    #plot_imgs(im0g, im1g)
+    print("mask shape: ", mask.shape)
+
+    # load pre computed files
+    #cv = np.load(cv_file)
+    #d_sgm = np.load(d_sgm_file)
 
     # maximal disparity
     D_max = 64
@@ -400,49 +417,51 @@ def main():
     # filter radius
     filter_radius = 5
 
-    # Use either SAD, NCC or SSD to compute the cost volume
-    #cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
-    cv = compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
-    #cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
+    # distance measure methods
+    d_methods = ['SAD', 'SSD', 'NCC']
 
-    # save cost volume
+    # pairwise cost of levels
+    #L1_set = [0.1, 0.1, 0.1, 0.2, 0.2, 0.2]
+    #L2_set = [0.2, 0.5, 1.5, 0.5, 0.8, 1.2]
+    L1_set = [0.01, 0.01, 0.1, 0.1]
+    L2_set = [0.2, 1.2, 2, 5]
+
+    # run through each method
+    for d_method in d_methods:
+
+        # L1, L2 set tests
+        for L1, L2 in zip(L1_set, L2_set):
+
+            # compute cost volume
+            cv = compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method=d_method)
+
+            # shape
+            H, W, D = cv.shape
+
+            # pairwise cost
+            f = get_pairwise_costs(H, W, D, weights=None, L1=L1, L2=L2)
+
+            # Compute SGM
+            d_sgm = compute_sgm(cv, f)
+
+            # calculate accuracy
+            acc = acc_disp_map(d_gt, d_sgm, mask)
+
+            # print
+            print("Method: {} L1: [{:.1f}] L2: [{:.1f}] acc: [{:.4f}]".format(d_method, L1, L2, acc))
+
+            # --
+            # plots
+            #plot_imgs(im0g, im1g)
+            #plot_disp_map(calc_wta(cv))
+            plot_disp_map(d_sgm, d_method, L1, L2, acc, print_to_file=True, fig_path=fig_path)
+
+
+    # --
+    # save files for speedup
+
     #np.save(cv_file, cv)
-
-    # load pre computed cv file
-    #cv = np.load(cv_file)
-
-    # print cv shape
-    print("cv: ", cv.shape)
-
-    # compute wta algorithm -> merely on cost-volume
-    d_wta = calc_wta(cv)
-    print("d_wta: ", d_wta.shape)
-
-    # plot wta
-    #plot_disp_map(d_wta)
-
-    # Compute pairwise costs
-    H, W, D = cv.shape
-    f = get_pairwise_costs(H, W, D, weights=None, L1=0.2, L2=1.5)
-    print("f: ", f.shape)
-
-    # Compute SGM
-    d_sgm = compute_sgm(cv, f)
-    #print("disp_map sgm: ", d_sgm.shape)
-
-    # save sgm
     #np.save(d_sgm_file, d_sgm)
-
-    # load pre computed cv file
-    #d_sgm = np.load(d_sgm_file)
-
-    # plot disparity map
-    plot_disp_map(d_sgm)
-
-    # calculate accuracy
-    acc = acc_disp_map(d_gt, d_sgm)
-    print("acc: ", acc)
-    
 
 
 
