@@ -186,7 +186,7 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     return cv
 
 
-def get_pairwise_costs(H, W, D, weights=None):
+def get_pairwise_costs(H, W, D, weights=None, L1=0.1, L2=0.2):
     """
     :param H: height of input image
     :param W: width of input image
@@ -196,10 +196,6 @@ def get_pairwise_costs(H, W, D, weights=None):
              Note: If weight=None, then each spatial position gets exactly the same pairwise costs.
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
-
-    # hyper params
-    L1 = 0.1
-    L2 = 0.2
 
     # no weights
     if weights == None:
@@ -229,21 +225,6 @@ def get_pairwise_costs(H, W, D, weights=None):
     return 0
 
 
-def binary_costs(z, f, L1=0.1, L2=0.2):
-    """
-    binary cost between two nodes
-    z: labels [ch x nodes]
-    f: pairwise cost [ch x nodes x disparities x disparities]
-    """
-
-    fb = np.copy(f)
-
-
-
-    # else
-    return 
-
-
 def dp_chain(g, f, m):
     """
         g: unary costs with shape (H,W,D)
@@ -258,7 +239,7 @@ def dp_chain(g, f, m):
     for i in range(W - 1):
 
         # parallel computation
-        m[:, i + 1] = np.min(m[:, i, :, np.newaxis] + f[:, i] + g[:, i, :, np.newaxis], axis=1)
+        m[:, i+1] = np.min(m[:, i, :, np.newaxis] + f[:, i] + g[:, i, :, np.newaxis], axis=1)
 
     return m
 
@@ -274,17 +255,20 @@ def compute_sgm(cv, f):
     # get shape
     H, W, D = cv.shape
 
-    # init disparity map
-    disp_map = np.zeros((H, W))
-
-    # for all four directions
+    # four directions for sgm algorithm
     directions = ['L', 'R', 'U', 'D']
 
     # init messages
     m = np.zeros((len(directions), H, W, D))
 
+    # init believes
+    b = np.zeros((H, W, D))
+
+    # init disparity map
+    disp_map = np.zeros((H, W))
+
     # calculate disparity map
-    z = calc_wta(cv)
+    #z = calc_wta(cv)
 
     # compute paiwise costs
     for a, direction in enumerate(directions):
@@ -294,40 +278,71 @@ def compute_sgm(cv, f):
         # horizontal backward messages
         if direction == 'L':
 
+            # plt.figure()
+            # plt.imshow(calc_wta(cv[:, ::-1]), cmap='jet')
+            # #plt.show()
+            
             # run the chain
-            m[a] = dp_chain(cv[:, ::-1], f, m[a])
+            m[a] = dp_chain(cv[:, ::-1], f, m[a])[:, ::-1]
+
+            # plt.figure()
+            # plt.imshow(calc_wta(m[a]), cmap='jet')
+            # #plt.show()
 
         # horizontal forward messages
         elif direction == 'R':
 
+            # plt.figure()
+            # plt.imshow(calc_wta(cv), cmap='jet')
+            # plt.show()
+
             # run the chain
             m[a] = dp_chain(cv, f, m[a])
+
+            # plt.figure()
+            # plt.imshow(calc_wta(m[a]), cmap='jet')
+            # plt.show()
 
         # vertical backward messages
         elif direction == 'U':
 
+            # plt.figure()
+            # plt.imshow(calc_wta(np.moveaxis(cv, 0, 1)[:, ::-1]), cmap='jet')
+            # plt.show()
+
             # run the chain
-            m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1)[:, ::-1], np.moveaxis(f, 0, 1), np.moveaxis(m[a], 0, 1)), 0, 1)
+            m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1)[:, ::-1], np.moveaxis(f, 0, 1), np.moveaxis(m[a], 0, 1)), 0, 1)[::-1, :]
+
+            # plt.figure()
+            # plt.imshow(calc_wta(m[a]), cmap='jet')
+            # plt.show()
 
         # vertical forward messages
         elif direction == 'D':
 
+            # plt.figure()
+            # plt.imshow(calc_wta(np.moveaxis(cv, 0, 1)), cmap='jet')
+            # plt.show()
+
             # run the chain
             m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1), np.moveaxis(f, 0, 1), np.moveaxis(m[a], 0, 1)), 0, 1)
 
-    # believes
-    b = np.zeros((H, W, D))
+            # plt.figure()
+            # plt.imshow(calc_wta(m[a]), cmap='jet')
+            # plt.show()
+
 
     print("compute believes: ")
 
     for i in range(H):
         for j in range(W):
 
+            # calculate believes [x, y, d]
             b[i, j] = cv[i, j] + np.sum(m[:, i, j, :], axis=0)
 
-    # get disp_map
     print("disp map: ")
 
+    # get disp_map
     disp_map = np.argmin(b, axis=2)
 
     return disp_map
@@ -407,7 +422,7 @@ def main():
 
     # Compute pairwise costs
     H, W, D = cv.shape
-    f = get_pairwise_costs(H, W, D)
+    f = get_pairwise_costs(H, W, D, weights=None, L1=0.2, L2=1.5)
 
     print("f: ", f.shape)
 
