@@ -235,8 +235,23 @@ def compute_sgm(cv, f):
     """
     H,W,D = cv.shape
 
-    msg = np.zeros((H,W,D))
+    msg_L = compute_msg(cv,f)
+    msg_R = compute_msg(np.flip(cv,axis=0), np.flip(f,axis=1))
+    #msg_R = compute_msg(np.flip(cv,axis=0), f)
+    msg_U = compute_msg(np.transpose(cv, (1,0,2)), np.transpose(f, (1,0,2,3)))
+    #msg_U = compute_msg(np.transpose(cv, (1,0,2)), f)
+    msg_D = compute_msg(np.flip(np.transpose(cv, (1,0,2)), axis=1), np.flip(np.transpose(f, (1,0,2,3)), axis=1))
+    #msg_D = compute_msg(np.flip(np.transpose(cv, (1,0,2), axis=1)), f)
 
+    # flip back the axis ! 
+    b = cv + msg_L + msg_R + msg_U + msg_D
+
+    disp = np.argmin(b, axis=2)
+
+#    plt.figure()
+#    plt.imshow(wta, cmap='plasma')
+#    plt.colorbar()
+#    plt.show()
     # rewrite - just need it for one dimension, as it tests it just along 
     # either horizontal or vertical and will be then combined.
    # for i in range(H-1):
@@ -245,18 +260,18 @@ def compute_sgm(cv, f):
    # old one dimensional cas: 
    # for i in range(dim-1):
    #        msg[:,i+1] = np.min(unary_cost[:,i] + msg[:,i] + pairwise_cost, axis = 1)
-    
 
-    return
+    return disp
 
 def compute_msg(cv, f):
-    dim = cv.shape[0]
+    dim = cv.shape[1]
     msg = np.zeros(cv.shape)
 
     for i in range(dim-1):
         msg[:,i+1,:] = np.min(cv[:,i,:,np.newaxis] + \
             msg[:,i,:,np.newaxis] + f[:,i,:,:], axis=1)
 
+    msg = np.transpose(msg, (0,2,1))
     return msg
 
 
@@ -273,9 +288,11 @@ def plot_imgs(im0g, im1g):
 
 def main():
 
+    img_path = '../ignore/ass3_data/'
+
+    # some pre computed files
+    cv_file = img_path + 'cv.npy'
     # path to images
-    img_path = '../ignore/ass3_data/'
-    img_path = '../ignore/ass3_data/'
 
     # Load input images
     im0 = imread(img_path + "Adirondack_left.png")
@@ -297,10 +314,11 @@ def main():
     filter_radius = 5
 
     # Use either SAD, NCC or SSD to compute the cost volume
-    cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
+    #cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
     #cv = compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
-    #cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
-
+   # cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
+   # np.save(cv_file, cv)
+    cv = np.load(cv_file)
 
     # compute wta algorithm
     calc_wta(cv)

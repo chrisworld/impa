@@ -26,7 +26,9 @@ print(msg)
 
 ############################################
 print('############################################')
-
+# multidimensional case, calculating through all rows at a time. 
+# in later usage, the input should be transposed/ flipped, while this 
+# function stays unchanged. 
 rows = 5
 columns = 3
 
