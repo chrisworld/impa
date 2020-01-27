@@ -25,6 +25,30 @@ def calc_wta(cv):
     return wta
 
 
+def get_padded_disp_imgs(left_image, right_image, D, radius):
+    """
+    pad the images according to filter radius and make disparities of right image I1
+    """
+
+    # get dimensions
+    H, W = left_image.shape
+
+    # copy and pad images
+    I0 = np.pad(left_image, radius//2)
+    I1 = np.pad(right_image, radius//2)
+
+    # get disparity images I(x-d, y)
+    I1_d = np.zeros((D, H + radius - 1, W + radius - 1))
+
+    # calculate disparity image
+    for d in np.arange(D):
+
+        # move right image to right x-direction
+        I1_d[d] = np.roll(I1, d, axis=1)
+
+    return I0, I1_d
+
+
 def compute_cost_volume_sad(left_image, right_image, D, radius):
     """
     Sum of Absolute Differences (SAD) cost volume
@@ -35,17 +59,8 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
 
-    # get dimensions
-    H, W = left_image.shape
-
-    # get disparity images I(x-d, y)
-    Imgs_d = np.zeros((D, H, W))
-
-    # calculate disparity image
-    for d in np.arange(D):
-
-        # move right image to right x-direction
-        Imgs_d[d] = np.roll(right_image, d, axis=1)
+    # padded imgs with disparity of right image
+    I0, Imgs_d = get_padded_disp_imgs(left_image, right_image, D, radius)
 
     # hop size in pixel
     hop = 1
@@ -84,23 +99,11 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
 
-    # get dimensions
-    H, W = left_image.shape
-
-    # get disparity images I(x-d, y)
-    Imgs_d = np.zeros((D, H, W))
-
-    # calculate disparity image
-    for d in np.arange(D):
-
-        # move right image to right x-direction
-        Imgs_d[d] = np.roll(right_image, d, axis=1)
+    # padded imgs with disparity of right image
+    I0, Imgs_d = get_padded_disp_imgs(left_image, right_image, D, radius)
 
     # hop size in pixel
     hop = 1
-
-    # copy left image
-    I0 = np.copy(left_image)
 
     # create patches of left image
     I0_patches = view_as_windows(I0, (radius, radius), step=hop)
@@ -133,17 +136,8 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     :return: cost volume of size (H,W,D)
     """
 
-    # get dimensions
-    H, W = left_image.shape
-
-    # get disparity images I(x-d, y)
-    Imgs_d = np.zeros((D, H, W))
-
-    # calculate disparity image
-    for d in np.arange(D):
-
-        # move right image to right x-direction
-        Imgs_d[d] = np.roll(right_image, d, axis=1)
+    # padded imgs with disparity of right image
+    I0, Imgs_d = get_padded_disp_imgs(left_image, right_image, D, radius)
 
     # hop size in pixel
     hop = 1
@@ -280,14 +274,14 @@ def compute_sgm(cv, f):
 
             # plt.figure()
             # plt.imshow(calc_wta(cv[:, ::-1]), cmap='jet')
-            # #plt.show()
+            # plt.show()
             
             # run the chain
             m[a] = dp_chain(cv[:, ::-1], f, m[a])[:, ::-1]
 
             # plt.figure()
             # plt.imshow(calc_wta(m[a]), cmap='jet')
-            # #plt.show()
+            # plt.show()
 
         # horizontal forward messages
         elif direction == 'R':
@@ -334,18 +328,21 @@ def compute_sgm(cv, f):
 
     print("compute believes: ")
 
-    for i in range(H):
-        for j in range(W):
-
-            # calculate believes [x, y, d]
-            b[i, j] = cv[i, j] + np.sum(m[:, i, j, :], axis=0)
-
-    print("disp map: ")
+    # compute believes
+    b = cv + np.sum(m, axis=0)
 
     # get disp_map
+    print("disp map: ")
     disp_map = np.argmin(b, axis=2)
 
     return disp_map
+
+
+def acc_disp_map(d_img0, d_img1, X=1):
+    """
+    accuracy calculation of disparity maps
+    """
+    return np.mean(np.abs(d_img0 - d_img1) <= X)
 
 
 def plot_imgs(im0g, im1g):
@@ -379,10 +376,13 @@ def main():
 
     # some pre computed files
     cv_file = img_path + 'cv.npy'
+    d_sgm_file = img_path + 'd_sgm.npy'
 
     # Load input images
     im0 = imread(img_path + "Adirondack_left.png")
     im1 = imread(img_path + "Adirondack_right.png")
+
+    d_gt = imread(img_path + "Adirondack_gt.png")
 
     # convert to gray values
     im0g = rgb2gray(im0)
@@ -391,6 +391,7 @@ def main():
     # plot image data
     print("image1 shape: ", im0g.shape)
     print("image2 shape: ", im1g.shape)
+    print("gt shape: ", d_gt.shape)
     #plot_imgs(im0g, im1g)
 
     # maximal disparity
@@ -401,14 +402,14 @@ def main():
 
     # Use either SAD, NCC or SSD to compute the cost volume
     #cv = compute_cost_volume_sad(im0g, im1g, D_max, filter_radius)
-    #cv = compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
+    cv = compute_cost_volume_ssd(im0g, im1g, D_max, filter_radius)
     #cv = compute_cost_volume_ncc(im0g, im1g, D_max, filter_radius)
 
     # save cost volume
     #np.save(cv_file, cv)
 
     # load pre computed cv file
-    cv = np.load(cv_file)
+    #cv = np.load(cv_file)
 
     # print cv shape
     print("cv: ", cv.shape)
@@ -423,16 +424,26 @@ def main():
     # Compute pairwise costs
     H, W, D = cv.shape
     f = get_pairwise_costs(H, W, D, weights=None, L1=0.2, L2=1.5)
-
     print("f: ", f.shape)
 
     # Compute SGM
     d_sgm = compute_sgm(cv, f)
+    #print("disp_map sgm: ", d_sgm.shape)
 
-    print("disp_map sgm: ", d_sgm.shape)
+    # save sgm
+    #np.save(d_sgm_file, d_sgm)
+
+    # load pre computed cv file
+    #d_sgm = np.load(d_sgm_file)
 
     # plot disparity map
     plot_disp_map(d_sgm)
+
+    # calculate accuracy
+    acc = acc_disp_map(d_gt, d_sgm)
+    print("acc: ", acc)
+    
+
 
 
 if __name__== "__main__":
