@@ -5,6 +5,12 @@ from skimage.color import rgb2gray
 from skimage.transform import rescale
 from skimage.util import view_as_windows
 
+# for bonus task
+from scipy import ndimage
+
+# otsu threshold for bonus task
+from skimage import filters
+
 
 def calc_wta(cv):
     """
@@ -194,6 +200,37 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     return cv
 
 
+def get_edge_weights(im0g):
+    """
+    calculate edge dependend weights for bonus task
+    """
+
+    # calculate edges with sobel filter
+    sx = ndimage.sobel(im0g, axis=0, mode='constant')
+    sy = ndimage.sobel(im0g, axis=1, mode='constant')
+    sob = np.hypot(sx, sy)
+
+    # calculate weights
+    weights = sob / np.max(sob)
+
+    plt.figure()
+    plt.imshow(weights, cmap='gray')
+    plt.colorbar()
+    plt.tight_layout()
+    plt.show()
+
+    # use simpler values for weights with threshold
+    otsu_thresh = filters.threshold_otsu(weights)
+
+    print("otsu_thresh: ", otsu_thresh)
+
+    # strong edge
+    weights[weights > otsu_thresh] = 1.0
+    weights[weights <= otsu_thresh] = 0.5
+
+    return weights
+
+
 def get_pairwise_costs(H, W, D, weights=None, L1=0.1, L2=0.2):
     """
     :param H: height of input image
@@ -205,32 +242,33 @@ def get_pairwise_costs(H, W, D, weights=None, L1=0.1, L2=0.2):
              In this case the array of shape (D,D) can be broadcasted to (H,W,D,D) by using np.broadcast_to(..).
     """
 
-    # no weights
-    if weights == None:
+    # all the same pairwise costs
+    costs = np.ones((D, D)) * L2
 
-        # all the same pairwise costs
-        costs = np.ones((D, D)) * L2
+    # run through disparity map
+    for i, zi in enumerate(range(D)):
+        for j, zj in enumerate(range(D)):
 
-        # run through disparity map
-        for i, zi in enumerate(range(D)):
-            for j, zj in enumerate(range(D)):
+            # same label
+            if zi == zj:
 
-                # same label
-                if zi == zj:
+                # zeros cost on same level
+                costs[i, j] = 0;
 
-                    # zeros cost on same level
-                    costs[i, j] = 0;
+            # one label diff
+            elif np.abs(zi - zj) == 1:
 
-                # one label diff
-                elif np.abs(zi - zj) == 1:
+                # cost for one level diff
+                costs[i, j] = L1;
 
-                    # cost for one level diff
-                    costs[i, j] = L1;
+    # broadcast the costs as they are the same for each nodes
+    f = np.broadcast_to(costs, (H, W, D, D))
 
-        # broadcast the costs as they are the same for each nodes
-        return np.broadcast_to(costs, (H, W, D, D))
+    # weights
+    if weights is not None:
+        return f * weights[:, :, np.newaxis, np.newaxis]
 
-    return 0
+    return f
 
 
 def dp_chain(g, f, m):
@@ -246,6 +284,7 @@ def dp_chain(g, f, m):
     # g as channel: [ch x nodes x disparities]
     for i in range(W - 1):
 
+        print("chain: ", i)
         # parallel computation
         m[:, i+1] = np.min(m[:, i, :, np.newaxis] + f[:, i] + g[:, i, :, np.newaxis], axis=1)
 
@@ -278,7 +317,7 @@ def compute_sgm(cv, f):
     # compute paiwise costs
     for a, direction in enumerate(directions):
 
-        #print("message direction: ", direction)
+        print("message direction: ", direction)
 
         # horizontal backward messages
         if direction == 'L':
@@ -288,7 +327,7 @@ def compute_sgm(cv, f):
             # plt.show()
             
             # run the chain
-            m[a] = dp_chain(cv[:, ::-1], f, m[a])[:, ::-1]
+            m[a] = dp_chain(cv[:, ::-1], f[:, ::-1], m[a])[:, ::-1]
 
             # plt.figure()
             # plt.imshow(calc_wta(m[a]), cmap='jet')
@@ -316,7 +355,7 @@ def compute_sgm(cv, f):
             # plt.show()
 
             # run the chain
-            m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1)[:, ::-1], np.moveaxis(f, 0, 1), np.moveaxis(m[a], 0, 1)), 0, 1)[::-1, :]
+            m[a] = np.moveaxis(dp_chain(np.moveaxis(cv, 0, 1)[:, ::-1], np.moveaxis(f, 0, 1)[:, ::-1], np.moveaxis(m[a], 0, 1)), 0, 1)[::-1, :]
 
             # plt.figure()
             # plt.imshow(calc_wta(m[a]), cmap='jet')
@@ -381,6 +420,36 @@ def plot_disp_map(disp_map, d_method, L1, L2, acc, print_to_file=True, fig_path=
         plt.show()
 
 
+
+def load_imgs(img_path, img_name, dark_img, use_dark_img=False):
+    """
+    load input images
+    """
+
+    # left image for reference
+    im0 = imread(img_path + img_name + "_left.png")
+
+    # right image dark
+    if img_name == 'Adirondack' and use_dark_img:
+        im1 = imread(img_path + dark_img + "_right.png")
+
+    # right image normal
+    else:
+        im1 = imread(img_path + img_name + "_right.png")
+
+    # ground truth
+    d_gt = imread(img_path + img_name + "_gt.png")
+
+    # mask
+    mask = imread(img_path + img_name + "_mask.png") // 255
+
+    # convert to gray values
+    im0g = rgb2gray(im0)
+    im1g = rgb2gray(im1)
+
+    return im0g, im1g, d_gt, mask
+
+
 def main():
 
     # path to img data and save location
@@ -391,24 +460,25 @@ def main():
     cv_file = img_path + 'cv.npy'
     d_sgm_file = img_path + 'd_sgm.npy'
 
-    # Load input images
-    im0 = imread(img_path + "Adirondack_left.png")
-    im1 = imread(img_path + "Adirondack_right.png")
-    d_gt = imread(img_path + "Adirondack_gt.png")
-    mask = imread(img_path + "Adirondack_mask.png") // 255
+    # image names
+    img_names = ['Adirondack', 'cones']
+    dark_img = ['AdirondackE']
 
-    # convert to gray values
-    im0g = rgb2gray(im0)
-    im1g = rgb2gray(im1)
+    # choose image
+    img_name = img_names[0]
+
+    # loads the images and converts them to grey
+    im0g, im1g, d_gt, mask = load_imgs(img_path, img_name, dark_img, use_dark_img=False)
 
     # plot image data
+    print("----image: {}-----".format(img_name))
     print("image1 shape: ", im0g.shape)
     print("image2 shape: ", im1g.shape)
     print("gt shape: ", d_gt.shape)
     print("mask shape: ", mask.shape)
 
     # load pre computed files
-    #cv = np.load(cv_file)
+    cv = np.load(cv_file)
     #d_sgm = np.load(d_sgm_file)
 
     # maximal disparity
@@ -418,13 +488,23 @@ def main():
     filter_radius = 5
 
     # distance measure methods
-    d_methods = ['SAD', 'SSD', 'NCC']
+    #d_methods = ['SAD', 'SSD', 'NCC']
+    d_methods = ['NCC']
 
     # pairwise cost of levels
     #L1_set = [0.1, 0.1, 0.1, 0.2, 0.2, 0.2]
     #L2_set = [0.2, 0.5, 1.5, 0.5, 0.8, 1.2]
-    L1_set = [0.01, 0.01, 0.1, 0.1]
-    L2_set = [0.2, 1.2, 2, 5]
+    #L1_set = [0.01, 0.01, 0.1, 0.1]
+    #L2_set = [0.2, 1.2, 2, 5]
+
+    L1_set = [0.1]
+    L2_set = [0.8]
+
+    # bonus task
+    weights = None
+    #weights = get_edge_weights(im0g)
+
+    print(weights)
 
     # run through each method
     for d_method in d_methods:
@@ -432,15 +512,20 @@ def main():
         # L1, L2 set tests
         for L1, L2 in zip(L1_set, L2_set):
 
+            print("...compute cv")
             # compute cost volume
-            cv = compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method=d_method)
+            #cv = compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method=d_method)
 
             # shape
             H, W, D = cv.shape
 
+            print("...compute pairwise cost")
             # pairwise cost
-            f = get_pairwise_costs(H, W, D, weights=None, L1=L1, L2=L2)
+            f = get_pairwise_costs(H, W, D, weights=weights, L1=L1, L2=L2)
+            print("shape: ", f[0:2, 0:2])
+            print("shape: ", f.shape)
 
+            print("...compute sgm")
             # Compute SGM
             d_sgm = compute_sgm(cv, f)
 
