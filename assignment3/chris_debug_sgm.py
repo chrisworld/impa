@@ -213,20 +213,25 @@ def get_edge_weights(im0g):
     # calculate weights
     weights = sob / np.max(sob)
 
-    plt.figure()
-    plt.imshow(weights, cmap='gray')
-    plt.colorbar()
-    plt.tight_layout()
-    plt.show()
+    # plt.figure()
+    # plt.imshow(weights, cmap='gray')
+    # plt.colorbar()
+    # plt.tight_layout()
+    # plt.show()
 
     # use simpler values for weights with threshold
     otsu_thresh = filters.threshold_otsu(weights)
 
-    print("otsu_thresh: ", otsu_thresh)
+    #print("otsu_thresh: ", otsu_thresh)
 
     # strong edge
     weights[weights > otsu_thresh] = 1.0
-    weights[weights <= otsu_thresh] = 0.5
+
+    # homogenious regions -> more penalty
+    weights[weights <= otsu_thresh] = 2.0
+
+    # other weighting
+    #weights = (1 - weights) + 1.0
 
     return weights
 
@@ -495,14 +500,14 @@ def main():
     #L1_set = [0.1, 0.1, 0.1, 0.2, 0.2, 0.2]
     #L2_set = [0.2, 0.5, 1.5, 0.5, 0.8, 1.2]
     #L1_set = [0.01, 0.01, 0.1, 0.1]
-    #L2_set = [0.2, 1.2, 2, 5]
+    #L2_set = [0.2, 1.2, 2.0, 5.0]
 
     L1_set = [0.1]
-    L2_set = [0.8]
+    L2_set = [2.0]
 
     # bonus task
-    weights = None
-    #weights = get_edge_weights(im0g)
+    #weights = None
+    weights = get_edge_weights(im0g)
 
     print(weights)
 
