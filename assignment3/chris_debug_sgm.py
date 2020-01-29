@@ -215,8 +215,9 @@ def get_edge_weights(im0g):
 
     # plt.figure()
     # plt.imshow(weights, cmap='gray')
-    # plt.colorbar()
+    # #plt.colorbar()
     # plt.tight_layout()
+    # plt.axis('off')
     # plt.show()
 
     # use simpler values for weights with threshold
@@ -230,10 +231,17 @@ def get_edge_weights(im0g):
     # homogenious regions -> more penalty
     weights[weights <= otsu_thresh] = 2.0
 
+    # plt.figure()
+    # plt.imshow(weights, cmap='gray')
+    # #plt.colorbar()
+    # plt.tight_layout()
+    # plt.axis('off')
+    # plt.show()
+
     # other weighting
     #weights = (1 - weights) + 1.0
 
-    return weights
+    return weights.astype(np.float32)
 
 
 def get_pairwise_costs(H, W, D, weights=None, L1=0.1, L2=0.2):
@@ -267,13 +275,13 @@ def get_pairwise_costs(H, W, D, weights=None, L1=0.1, L2=0.2):
                 costs[i, j] = L1;
 
     # broadcast the costs as they are the same for each nodes
-    f = np.broadcast_to(costs, (H, W, D, D))
+    f = np.broadcast_to(costs, (H, W, D, D)).astype(np.float32)
 
     # weights
     if weights is not None:
-        return f * weights[:, :, np.newaxis, np.newaxis]
+        return f * weights[:, :, np.newaxis, np.newaxis].astype(np.float32)
 
-    return f
+    return f.astype(np.float32)
 
 
 def dp_chain(g, f, m):
@@ -289,7 +297,7 @@ def dp_chain(g, f, m):
     # g as channel: [ch x nodes x disparities]
     for i in range(W - 1):
 
-        print("chain: ", i)
+        #print("chain: ", i)
         # parallel computation
         m[:, i+1] = np.min(m[:, i, :, np.newaxis] + f[:, i] + g[:, i, :, np.newaxis], axis=1)
 
@@ -322,7 +330,7 @@ def compute_sgm(cv, f):
     # compute paiwise costs
     for a, direction in enumerate(directions):
 
-        print("message direction: ", direction)
+        #print("message direction: ", direction)
 
         # horizontal backward messages
         if direction == 'L':
@@ -490,7 +498,7 @@ def main():
     D_max = 64
 
     # filter radius
-    filter_radius = 5
+    filter_radius = 1
 
     # distance measure methods
     #d_methods = ['SAD', 'SSD', 'NCC']
@@ -503,13 +511,11 @@ def main():
     #L2_set = [0.2, 1.2, 2.0, 5.0]
 
     L1_set = [0.1]
-    L2_set = [2.0]
+    L2_set = [0.8]
 
     # bonus task
-    #weights = None
-    weights = get_edge_weights(im0g)
-
-    print(weights)
+    weights = None
+    #weights = get_edge_weights(im0g)
 
     # run through each method
     for d_method in d_methods:
@@ -517,20 +523,18 @@ def main():
         # L1, L2 set tests
         for L1, L2 in zip(L1_set, L2_set):
 
-            print("...compute cv")
+            #print("...compute cv")
             # compute cost volume
             #cv = compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method=d_method)
 
             # shape
             H, W, D = cv.shape
 
-            print("...compute pairwise cost")
+            #print("...compute pairwise cost")
             # pairwise cost
             f = get_pairwise_costs(H, W, D, weights=weights, L1=L1, L2=L2)
-            print("shape: ", f[0:2, 0:2])
-            print("shape: ", f.shape)
 
-            print("...compute sgm")
+            #print("...compute sgm")
             # Compute SGM
             d_sgm = compute_sgm(cv, f)
 
