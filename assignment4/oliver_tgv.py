@@ -62,9 +62,10 @@ def make_K(M, N):
     """
 
     _, nabla_x, nabla_y = _make_nabla(M,N)    
-    I = np.identity((M*N,M*N))
-    K = scipy.sparse.bmat([[nabla_x, -I, None], 
-                           [nabla_y, None, -I], 
+    I = -1 * sp.identity(M*N, format='coo')
+    #K = sp.coo_matrix((6*M*N, 3*M*N))
+    K = scipy.sparse.bmat([[nabla_x, I, None], 
+                           [nabla_y, None, I], 
                            [None, nabla_x, None],
                            [None, nabla_y, None],
                            [None, None, nabla_x],
@@ -182,11 +183,11 @@ def tgv2_pd(f, alpha, maxit):
 
 
 # Load Observations
-samples = np.array([np.load('observation{}.npy'.format(i)) for i in range(0,9)])
+samples = np.array([np.load('../ignore/ass4_data/observation{}.npy'.format(i)) for i in range(0,9)])
 f = samples.transpose(1,2,0)
 
 # Perform TGV-Fusion
-res, v = tgv2_pd(f, alpha=(0.0, 0.0), maxit=0)  # TODO: set appropriate parameters
+#res, v = tgv2_pd(f, alpha=(0.0, 0.0), maxit=0)  # TODO: set appropriate parameters
 
 # Plot result
 # TODO
