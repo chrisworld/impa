@@ -96,7 +96,7 @@ def calc_energy(u_, alpha, f):
     @param alpha: vector of two regularization parameters alpha1 and alpha2
     @param f: K observations of the same scene
     """
-    M, N, K = f.shape
+    M, N, _ = f.shape
     # seperate disparity map u and gradient map v
     u = u_[M*N:,:]
     v = u_[:M*N,:]
@@ -105,18 +105,15 @@ def calc_energy(u_, alpha, f):
     a2 = alpha[1]
 
     # gradient 
-    nabla,_,_ = _make_nabla(2*M*N,M*N)
+    nabla,_,_ = _make_nabla(M,N)
+    # nabla tilde ????? i have no clue. 
     nabla_tilde = np.diag(np.hstack((nabla,nabla)))
         
-    # matrices for convenience and readability 
-    
-    
-    E = a1 * L2_1norm((nabla @ u - v).reshape(2, N*M)) + \
+    E = a1 * L2_1norm(((nabla @ u) - v).reshape(2, M*N)) + \
         a2 * L2_1norm((nabla_tilde @ v).reshape(4, M*N)) + \
-            np.sum(np.norm.linalg(u.reshape(M,N) - f[...,0] ))
-            # symbolically for the first image. to be updated with 
-            # repeat and newaxis stuff
-    pass
+            np.sum(np.norm.linalg(u.reshape(M,N)[:,:,np.newaxis] - f))
+
+    return E
 
 def compute_accX(x, y, X=1):
     # TODO
@@ -162,6 +159,7 @@ def tgv2_pd(f, alpha, maxit):
     # primal and dual step size
     tau = 0.0  # TODO
     sigma = 0.0  # TODO
+    res = np.zeros((maxit,1))
 
     for it in range(0, maxit):
         # TODO calculate iterates as described in Equation (4)
@@ -174,14 +172,13 @@ def tgv2_pd(f, alpha, maxit):
         u_n = np.vstack((u_,v_)) 
         p_n = p + sigma*k @ (2*u_n - u)
 
-        # TODO ravel p_n and q_n
-        p_ = proj_ball(p_n[:2*M*N,:], lamb)
-        q_ = proj_ball(p_n(p_n[2*M*N:, :]), lamb)
+        p_ = proj_ball(np.reshape(p_n[:2*M*N,:], 2,M*N), alpha[0])
+        q_ = proj_ball(np.reshape(p_n[2*M*N:, :], 4,M*N), alpha[1])
         p = np.vstack((p_,q_))
         u = u_n
+        res[it,:] = calc_energy(u, alpha, f)
 
-    calc_energy(u, alpha, f)
-    return
+    return res, u
 
 
 # Load Observations
@@ -189,7 +186,7 @@ samples = np.array([np.load('../ignore/ass4_data/observation{}.npy'.format(i)) f
 f = samples.transpose(1,2,0)
 
 # Perform TGV-Fusion
-#res, v = tgv2_pd(f, alpha=(0.0, 0.0), maxit=0)  # TODO: set appropriate parameters
+res, v = tgv2_pd(f, alpha=(0.0, 0.0), maxit=0)  # TODO: set appropriate parameters
 
 # Plot result
 # TODO
