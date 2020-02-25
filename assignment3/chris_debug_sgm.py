@@ -40,11 +40,11 @@ def get_padded_disp_imgs(left_image, right_image, D, radius):
     H, W = left_image.shape
 
     # copy and pad images
-    I0 = np.pad(left_image, radius//2)
-    I1 = np.pad(right_image, radius//2)
+    I0 = np.pad(left_image, (radius, radius))
+    I1 = np.pad(right_image, (radius, radius))
 
     # get disparity images I(x-d, y)
-    I1_d = np.zeros((D, H + radius - 1, W + radius - 1))
+    I1_d = np.zeros((D, H + radius*2, W + radius*2))
 
     # calculate disparity image
     for d in np.arange(D):
@@ -92,7 +92,7 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     hop = 1
 
     # create patches of left image
-    I0_patches = view_as_windows(I0, (radius, radius), step=hop)
+    I0_patches = view_as_windows(I0, (radius*2+1, radius*2+1), step=hop)
 
     # get patch shape
     H_p, W_p, rh, rw = I0_patches.shape
@@ -104,7 +104,7 @@ def compute_cost_volume_sad(left_image, right_image, D, radius):
     for d, Id in enumerate(Imgs_d):
 
         # get patches
-        Id_patches = view_as_windows(Id, (radius, radius), step=hop)
+        Id_patches = view_as_windows(Id, (radius*2+1, radius*2+1), step=hop)
 
         # compute cost volume with similarity measure sad
         cv[:, :, d] = np.sum(np.sum(np.abs(I0_patches - Id_patches), axis=2), axis=2)
@@ -129,7 +129,7 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     hop = 1
 
     # create patches of left image
-    I0_patches = view_as_windows(I0, (radius, radius), step=hop)
+    I0_patches = view_as_windows(I0, (radius*2+1, radius*2+1), step=hop)
 
     # get patch shape
     H_p, W_p, rh, rw = I0_patches.shape
@@ -141,7 +141,7 @@ def compute_cost_volume_ssd(left_image, right_image, D, radius):
     for d, Id in enumerate(Imgs_d):
 
         # get patches
-        Id_patches = view_as_windows(Id, (radius, radius), step=hop)
+        Id_patches = view_as_windows(Id, (radius*2+1, radius*2+1), step=hop)
 
         # compute cost volume with similarity measure sad
         cv[:, :, d] = np.sum(np.sum(np.power(I0_patches - Id_patches, 2), axis=2), axis=2)
@@ -166,7 +166,7 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     hop = 1
 
     # create patches of left image
-    I0_patches = view_as_windows(I0, (radius, radius), step=hop)
+    I0_patches = view_as_windows(I0, (radius*2+1, radius*2+1), step=hop)
 
     # calculate means
     mu_I0_p = np.mean(np.mean(I0_patches, axis=2), axis=2)
@@ -185,7 +185,7 @@ def compute_cost_volume_ncc(left_image, right_image, D, radius):
     for d, Id in enumerate(Imgs_d):
 
         # get patches
-        Id_patches = view_as_windows(Id, (radius, radius), step=hop)
+        Id_patches = view_as_windows(Id, (radius*2+1, radius*2+1), step=hop)
 
         # calculate means
         mu_Id_p = np.mean(np.mean(Id_patches, axis=2), axis=2)
@@ -415,19 +415,23 @@ def plot_imgs(im0g, im1g):
     plt.show()
 
 
-def plot_disp_map(disp_map, d_method, L1, L2, acc, print_to_file=True, fig_path='./'):
+def plot_disp_map(disp_map, d_method, L1, L2, acc, filter_radius, print_to_file=True, fig_path='./', sgm=True):
     """
     plot winner takes all algorithm
     """
     plt.figure()
-    #plt.imshow(wta, cmap='plasma')
     plt.imshow(disp_map, cmap='jet')
-    plt.colorbar()
+    #plt.colorbar()
     plt.tight_layout()
     plt.axis('off')
 
+    if sgm:
+        alg = 'SGM_'
+    else:
+        alg = 'WTA_'
+
     if print_to_file:
-        plt.savefig(fig_path + 'disp_map_' + d_method + '_' + str(L1).replace('.', 'p') + '_' + str(L2).replace('.', 'p') + '_acc-' + str(acc)[0:6].replace('.', 'p') + '.png', dpi=150)
+        plt.savefig(fig_path + 'disp_map_' + alg + d_method + '_r-'+ str(filter_radius) + '_' + str(L1).replace('.', 'p') + '_' + str(L2).replace('.', 'p') + '_acc-' + str(acc)[0:6].replace('.', 'p') + '.png', dpi=150)
 
     else:
         plt.show()
@@ -475,7 +479,7 @@ def main():
 
     # image names
     img_names = ['Adirondack', 'cones']
-    dark_img = ['AdirondackE']
+    dark_img = 'AdirondackE'
 
     # choose image
     img_name = img_names[0]
@@ -491,18 +495,19 @@ def main():
     print("mask shape: ", mask.shape)
 
     # load pre computed files
-    cv = np.load(cv_file)
+    #cv = np.load(cv_file)
     #d_sgm = np.load(d_sgm_file)
 
     # maximal disparity
     D_max = 64
 
     # filter radius
-    filter_radius = 1
+    filter_radii = [1, 2, 5]
+    filter_radius = filter_radii[0]
 
     # distance measure methods
-    #d_methods = ['SAD', 'SSD', 'NCC']
-    d_methods = ['NCC']
+    d_methods = ['SAD', 'SSD', 'NCC']
+    #d_methods = ['SAD']
 
     # pairwise cost of levels
     #L1_set = [0.1, 0.1, 0.1, 0.2, 0.2, 0.2]
@@ -517,38 +522,45 @@ def main():
     weights = None
     #weights = get_edge_weights(im0g)
 
+    # Xaccuracy
+    X = 2 
+
     # run through each method
     for d_method in d_methods:
 
-        # L1, L2 set tests
-        for L1, L2 in zip(L1_set, L2_set):
+        # all filter radii
+        for filter_radius in filter_radii:
 
-            #print("...compute cv")
-            # compute cost volume
-            #cv = compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method=d_method)
+            # L1, L2 set tests
+            for L1, L2 in zip(L1_set, L2_set):
 
-            # shape
-            H, W, D = cv.shape
+                #print("...compute cv")
+                # compute cost volume
+                cv = compute_cost_volume_selector(im0g, im1g, D_max, filter_radius, d_method=d_method)
 
-            #print("...compute pairwise cost")
-            # pairwise cost
-            f = get_pairwise_costs(H, W, D, weights=weights, L1=L1, L2=L2)
+                # shape
+                H, W, D = cv.shape
 
-            #print("...compute sgm")
-            # Compute SGM
-            d_sgm = compute_sgm(cv, f)
+                #print("...compute pairwise cost")
+                # pairwise cost
+                f = get_pairwise_costs(H, W, D, weights=weights, L1=L1, L2=L2)
 
-            # calculate accuracy
-            acc = acc_disp_map(d_gt, d_sgm, mask)
+                #print("...compute sgm")
+                # Compute SGM
+                d_sgm = compute_sgm(cv, f)
 
-            # print
-            print("Method: {} L1: [{:.1f}] L2: [{:.1f}] acc: [{:.4f}]".format(d_method, L1, L2, acc))
+                # calculate accuracy
+                acc = acc_disp_map(d_gt, d_sgm, mask, X=X)
+                acc_wta = acc_disp_map(d_gt, calc_wta(cv), mask, X=X)
 
-            # --
-            # plots
-            #plot_imgs(im0g, im1g)
-            #plot_disp_map(calc_wta(cv))
-            plot_disp_map(d_sgm, d_method, L1, L2, acc, print_to_file=True, fig_path=fig_path)
+                # print
+                print("Radi: {} Method: {} L1: [{:.1f}] L2: [{:.1f}] acc-wta: [{:.4f}] acc-sgm: [{:.4f}]".format(filter_radius, d_method, L1, L2, acc_wta, acc))
+
+                # --
+                # plots
+                #plot_imgs(im0g, im1g)
+                plot_disp_map(calc_wta(cv), d_method, L1, L2, acc_wta, filter_radius, print_to_file=True, fig_path=fig_path, sgm=False)
+                plot_disp_map(d_sgm, d_method, L1, L2, acc, filter_radius, print_to_file=True, fig_path=fig_path)
 
 
     # --
