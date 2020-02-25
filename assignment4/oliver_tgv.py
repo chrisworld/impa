@@ -86,8 +86,8 @@ def proj_ball(Y, lamb):
     return Y/(np.max(1, 1/lamb * np.linalg.norm(Y)))
 
 def L2_1norm(X):
-    Y = np.sum(np.square(np.sum(np.power(X,2), dim=1)),dim=0)
-    return Y
+    #Y = np.sum(np.square(np.sum(np.power(X,2), 1)),0)
+    return np.linalg.norm(np.linalg.norm(X,2, axis=0),1)
     
 def calc_energy(u_, alpha, f):
     """
@@ -110,10 +110,12 @@ def calc_energy(u_, alpha, f):
         
     # matrices for convenience and readability 
     
-
-    #E = a1 * 
-
-
+    
+    E = a1 * L2_1norm((nabla @ u - v).reshape(2, N*M)) + \
+        a2 * L2_1norm((nabla_tilde @ v).reshape(4, M*N)) + \
+            np.sum(np.norm.linalg(u.reshape(M,N) - f[...,0] ))
+            # symbolically for the first image. to be updated with 
+            # repeat and newaxis stuff
     pass
 
 def compute_accX(x, y, X=1):
