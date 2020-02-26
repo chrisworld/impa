@@ -60,8 +60,18 @@ def make_K(M, N):
     @param N:
     @return: the K operator as described in Equation (5)
     """
-    # TODO
-    return
+
+    _, nabla_x, nabla_y = _make_nabla(M,N)    
+    I = -1 * sp.identity(M*N, format='coo')
+    #K = sp.coo_matrix((6*M*N, 3*M*N))
+    K = scipy.sparse.bmat([[nabla_x, I, None], 
+                           [nabla_y, None, I], 
+                           [None, nabla_x, None],
+                           [None, nabla_y, None],
+                           [None, None, nabla_x],
+                           [None, None, nabla_y]])
+    
+    return K
 
 
 def proj_ball(Y, lamb):
@@ -71,8 +81,7 @@ def proj_ball(Y, lamb):
     @param lamb: scalar hyperparameter lambda
     @return: projection result either 2xMN or 4xMN
     """
-    # TODO
-    pass
+    return Y / (np.max(1, 1 / lamb * np.linalg.norm(Y)))
 
 
 def compute_accX(x, y, X=1, mask=None):
@@ -111,27 +120,31 @@ def tgv2_pd(f, alpha, maxit):
     L = np.sqrt(12)
 
     # initialize primal variables
-    # TODO
+    u = np.zeros(M * N)
+    v = np.zeros(2 * M * N)
 
     # initialize dual variables
-    # TODO
+    p = np.zeros(2 * M * N)
+    q = np.zeros(4 * M * N)
+
+    # concatenate
+    u_bold = np.concatenate((u.ravel(), v.ravel()))
+    p_bold = np.concatenate((p.ravel(), q.ravel()))
 
     # primal and dual step size
-    tau = 0.0  # TODO
-    sigma = 0.0  # TODO
+    tau = 1 / 24
+    sigma = 1 / 24
 
     for it in range(0, maxit):
         # TODO calculate iterates as described in Equation (4)
         # To calculate the data term projection you can use:
         # prox_sum_l1(x, f, tau, Wis)
         # where x is the parameter of the projection function i.e. u^(n+(1/2))
-        pass
+        
+        u_bold = u_bold - tau * k.T @ p_bold
 
-    # placeholder -> remove later
-    u = np.zeros((M, N))
-    v = np.zeros((2, M, N))
 
-    return u, v
+    return u.reshape(M, N), v.reshape(2, M, N)
 
 
 def plot_data(f, gt):
@@ -169,9 +182,13 @@ def main():
     # load ground truth
     gt = np.load(data_path + 'gt.npy')
 
+    # hyper params -> find good sets
+    alpha_set = [(0.0, 0.0), (0.0, 0.0)]
+
+    alpha = alpha_set[0]
+
     # Perform TGV-Fusion
-    # TODO: set appropriate parameters
-    res, v = tgv2_pd(f, alpha=(0.0, 0.0), maxit=0)  
+    res, v = tgv2_pd(f, alpha=alpha, maxit=300)  
 
     # Plot result
     # TODO
