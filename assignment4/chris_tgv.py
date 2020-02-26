@@ -81,7 +81,7 @@ def proj_ball(Y, lamb):
     @param lamb: scalar hyperparameter lambda
     @return: projection result either 2xMN or 4xMN
     """
-    return Y / (np.max(1, 1 / lamb * np.linalg.norm(Y)))
+    return Y / (np.max((1, np.linalg.norm(Y) / lamb)))
 
 
 def compute_accX(x, y, X=1, mask=None):
@@ -141,10 +141,20 @@ def tgv2_pd(f, alpha, maxit):
         # prox_sum_l1(x, f, tau, Wis)
         # where x is the parameter of the projection function i.e. u^(n+(1/2))
         
-        u_bold = u_bold - tau * k.T @ p_bold
+        u_bold_n = u_bold
+
+        u_bold = u_bold_n - tau * k.T @ p_bold
+
+        u = prox_sum_l1(u_bold[:M*N], f, tau, Wis)
+        v = u_bold[M*N:]
+
+        p_bold = p_bold + sigma * k @ (2 * u_bold - u_bold_n)
+
+        p = proj_ball(p_bold[:2*M*N].reshape(2, M*N), alpha[0])
+        q = proj_ball(p_bold[2*M*N:].reshape(4, M*N), alpha[1])
 
 
-    return u.reshape(M, N), v.reshape(2, M, N)
+    return u, v
 
 
 def plot_data(f, gt):
@@ -169,6 +179,17 @@ def plot_data(f, gt):
     plt.show()
 
 
+def plot_result(u_tgv, alpha):
+    """
+    plot the result
+    """
+    plt.figure()
+    plt.imshow(u_tgv, cmap='gray')
+    plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
+    plt.colorbar()
+    
+
+
 def main():
 
     # path to img data and save location
@@ -179,26 +200,33 @@ def main():
     f = samples.transpose(1,2,0)
     print("samples f: ", f.shape)
 
+    # shape of things
+    M, N, K = f.shape
+
     # load ground truth
     gt = np.load(data_path + 'gt.npy')
 
+    # max iterations
+    maxit = 10
+    
     # hyper params -> find good sets
-    alpha_set = [(0.0, 0.0), (0.0, 0.0)]
+    alpha_set = [(0.3, 0.5), (0.1, 1.0), (1.0, 0.1)]
 
-    alpha = alpha_set[0]
+    for alpha in alpha_set:
 
-    # Perform TGV-Fusion
-    res, v = tgv2_pd(f, alpha=alpha, maxit=300)  
+        # Perform TGV-Fusion
+        u_tgv, v_tgv = tgv2_pd(f, alpha=alpha, maxit=maxit)  
 
-    # Plot result
-    # TODO
+        # Plot result
+        plot_result(u_tgv.reshape(M, N), alpha)
 
-    # Calculate Accuracy
-    acc = compute_accX(res, gt, X=1)
+        # Calculate Accuracy
+        acc = compute_accX(u_tgv.reshape(M, N), gt, X=1)
 
-    # print message
-    print("Acc: [{}]".format(acc))
+        # print message
+        print("maxit=[{}], alpha=[{}, {}], Acc: [{}]".format(maxit, alpha[0], alpha[1], acc))
 
+    plt.show()
     # --
     # plot data
     #plot_data(f, gt)
