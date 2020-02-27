@@ -104,6 +104,8 @@ def tgv2_pd(f, alpha, maxit):
     @param maxit: maximum number of iterations
     @return: tuple of u with shape MxN and v with shape 2xMxN
     """
+    f_img = f
+
     M, N, K = f.shape
     f = f.reshape(M*N, K)
 
@@ -135,6 +137,8 @@ def tgv2_pd(f, alpha, maxit):
     tau = 1 / 24
     sigma = 1 / 24
 
+    e_list = []
+
     for it in range(0, maxit):
         # TODO calculate iterates as described in Equation (4)
         # To calculate the data term projection you can use:
@@ -158,6 +162,16 @@ def tgv2_pd(f, alpha, maxit):
         u_b = u_bn1
         p_b = np.concatenate((p.ravel(), q.ravel()))
 
+        # calculate energy
+        e_list.append(calc_energy(u, v, f_img, alpha))
+
+    # print energy
+    plt.figure()
+    plt.title("TGV Energy, alpha=[{}, {}]".format(alpha[0], alpha[1]))
+    plt.xlabel("iterations")
+    plt.ylabel("Energy")
+    plt.plot(e_list)
+    #plt.show()
 
     return u, v
 
@@ -198,7 +212,7 @@ def L2_1norm(X):
     """
     L2_1 Matrix norm: L2 norm across rows, l1 nowrm across cols
     """
-    return np.linalg.norm(np.linalg.norm(X, 2, axis=0), 1)
+    return np.linalg.norm(np.linalg.norm(X, 2, axis=0), ord=1)
 
 def calc_energy(u, v, f, alpha):
     """
@@ -217,12 +231,7 @@ def calc_energy(u, v, f, alpha):
     nabla_t = scipy.sparse.bmat([[nabla, None], 
                                  [None, nabla]])
 
-    print("nabla: ", nabla.shape)
-    print("nabla_t: ", nabla_t.shape)
-
-    e = alpha[0] * L2_1norm((nabla @ u - v).reshape(2, M * N)) + alpha[1] * L2_1norm((nabla_t @ v).reshape(4, M * N)) #+ np.sum(np.linalg.norm(u.reshape(M, N)[:,:,np.newaxis] - f, ord=1))
-
-    print("energy: ", e)
+    e = alpha[0] * L2_1norm((nabla @ u - v).reshape(2, M * N)) + alpha[1] * L2_1norm((nabla_t @ v).reshape(4, M * N)) + np.sum(np.linalg.norm(u.reshape(M,N)[:,:,np.newaxis] - f, axis=(0,1)))
 
     return e
 
@@ -237,18 +246,21 @@ def main():
     f = samples.transpose(1,2,0)
     print("samples f: ", f.shape)
 
+
     # shape of things
     M, N, K = f.shape
 
     # load ground truth
     gt = np.load(data_path + 'gt.npy')
 
+    #plot_data(f, gt)
+
     # max iterations
     maxit = 10
     
     # hyper params -> find good sets
-    #alpha_set = [(0.3, 0.5), (0.1, 1.0), (1.0, 0.1)]
-    alpha_set = [(0.3, 0.5)]
+    #alpha_set = [(0.001, 1.0), (1.0, 0.001), (0.5, 0.5)]
+    alpha_set = [(0.8, 0.3)]
 
     for alpha in alpha_set:
 
@@ -267,7 +279,7 @@ def main():
         # print message
         print("maxit=[{}], alpha=[{}, {}], Energy: [{:.2f}] Acc: [{:.4f}]".format(maxit, alpha[0], alpha[1], e, acc))
 
-    #plt.show()
+    plt.show()
     # --
     # plot data
     #plot_data(f, gt)
