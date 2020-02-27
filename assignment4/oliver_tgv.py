@@ -83,7 +83,7 @@ def proj_ball(Y, lamb):
     @return: projection result either 2xMN or 4xMN
     """
     # TODO
-    return Y/(np.max(1, (1/lamb * np.linalg.norm(Y))))
+    return Y/(np.max((1, (1/lamb * np.linalg.norm(Y)))))
 
 def L2_1norm(X):
     #Y = np.sum(np.square(np.sum(np.power(X,2), 1)),0)
@@ -149,21 +149,23 @@ def tgv2_pd(f, alpha, maxit):
 
     # initializing primal points
     # setting up vectors u_ MN and v_ 2MN with zeros
-    u_ = np.zeros((M*N,1))
-    v_ = np.zeros((2*M*N,1))
+    u_ = np.zeros((M*N))
+    v_ = np.zeros((2*M*N))
     #combine them to u
-    u = np.vstack((u_,v_)) 
+    u = np.concatenate((u_,v_)) 
 
     # initializing dual points
     # set up p_ 2MN and q_ 4MN with zeros
-    p_ = np.zeros((2*M*N,1))
+    p_ = np.zeros((2*M*N))
     q_ = np.zeros((4*M*N))
     # combining them to p
-    p = np.vstack((p_,q_))
+    p = np.concatenate((p_,q_))
+
+    sigma = tau = 1.0 / (2* L**2)
 
     # primal and dual step size
-    tau = 0.0  # TODO
-    sigma = 0.0  # TODO
+    #tau = 0.0  # TODO
+    #sigma = 0.0  # TODO
     res = np.zeros((maxit,1))
 
     for it in range(0, maxit):
@@ -171,27 +173,35 @@ def tgv2_pd(f, alpha, maxit):
         # To calculate the data term projection you can use:
         # prox_sum_l1(x, f, tau, Wis)
         # where x is the parameter of the projection function i.e. u^(n+(1/2))
-        u_n  = u - tau*k.T @ p       
-        u_ = prox_sum_l1(u_n[:M*N,:], f, tau, Wis)
-        v_ = u_n[M*N:,:]
-        u_n = np.vstack((u_,v_)) 
-        p_n = p + sigma*k @ (2*u_n - u)
-
-        p_ = proj_ball(np.reshape(p_n[:2*M*N,:], 2,M*N), alpha[0])
-        q_ = proj_ball(np.reshape(p_n[2*M*N:, :], 4,M*N), alpha[1])
-        p = np.vstack((p_,q_))
+        u_n  = u - tau*k.T * p       
+        u_ = prox_sum_l1(u_n[:M*N], f, tau, Wis)
+        v_ = u_n[M*N:]
+        u_n = np.concatenate((u_,v_)) 
+        # half step of p
+        p_n = p + sigma*k * (2*u_n - u)
+        p_ = proj_ball(np.reshape(p_n[:2*M*N], (2,M*N)), alpha[0])
+        q_ = proj_ball(np.reshape(p_n[2*M*N:], (4,M*N)), alpha[1])
+        p = np.concatenate((p_.ravel(),q_.ravel()))
         u = u_n
-        res[it,:] = calc_energy(u, alpha, f, nabla, nabla_tilde)
+        #res[it,:] = calc_energy(u, alpha, f, nabla, nabla_tilde)
 
-    return res, u
+    #return res, u
+    return u[:M*N].reshape(M,N), u[M*N:]
 
 
 # Load Observations
 samples = np.array([np.load('../ignore/ass4_data/observation{}.npy'.format(i)) for i in range(0,9)])
 f = samples.transpose(1,2,0)
+alpha = (0.3, 0.5)
 
 # Perform TGV-Fusion
-res, v = tgv2_pd(f, alpha=(0.0, 0.0), maxit=0)  # TODO: set appropriate parameters
+res, v = tgv2_pd(f, alpha=alpha, maxit=50)  # TODO: set appropriate parameters
+
+plt.figure()
+plt.imshow(res, cmap='gray')
+#plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
+plt.colorbar()
+plt.show()
 
 # Plot result
 # TODO
