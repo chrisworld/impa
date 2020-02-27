@@ -83,13 +83,13 @@ def proj_ball(Y, lamb):
     @return: projection result either 2xMN or 4xMN
     """
     # TODO
-    return Y/(np.max(1, 1/lamb * np.linalg.norm(Y)))
+    return Y/(np.max(1, (1/lamb * np.linalg.norm(Y))))
 
 def L2_1norm(X):
     #Y = np.sum(np.square(np.sum(np.power(X,2), 1)),0)
     return np.linalg.norm(np.linalg.norm(X,2, axis=0),1)
     
-def calc_energy(u_, alpha, f):
+def calc_energy(u_, alpha, f, nabla, nabla_tilde):
     """
     calculate the energy of the TGV regularized fusion task
     @param u: vector containing of (u_, v_).T
@@ -103,21 +103,20 @@ def calc_energy(u_, alpha, f):
     # get regularization parameters
     a1 = alpha[0]
     a2 = alpha[1]
-
-    # gradient 
-    nabla,_,_ = _make_nabla(M,N)
-    # nabla tilde ????? i have no clue. 
-    nabla_tilde = np.diag(np.hstack((nabla,nabla)))
         
     E = a1 * L2_1norm(((nabla @ u) - v).reshape(2, M*N)) + \
         a2 * L2_1norm((nabla_tilde @ v).reshape(4, M*N)) + \
-            np.sum(np.norm.linalg(u.reshape(M,N)[:,:,np.newaxis] - f))
+            np.sum(np.linalg.norm(u.reshape(M,N)[:,:,np.newaxis] - f, axis=(0,1)))
 
     return E
 
 def compute_accX(x, y, X=1):
+    M,N = y.shape
+    Z = M*N 
+
+    acc = 1.0 /Z * np.sum(np.abs(x.reshape(M,N) - y)<=X)
     # TODO
-    pass
+    return acc
 
 
 def tgv2_pd(f, alpha, maxit):
@@ -141,6 +140,12 @@ def tgv2_pd(f, alpha, maxit):
 
     # Lipschitz constant of K
     L = np.sqrt(12)
+
+    # nablas
+    nabla,_,_ = _make_nabla(M,N)
+    # probably not correct, but lol.
+    nabla_tilde = _make_nabla(2*M,N)
+
 
     # initializing primal points
     # setting up vectors u_ MN and v_ 2MN with zeros
@@ -176,7 +181,7 @@ def tgv2_pd(f, alpha, maxit):
         q_ = proj_ball(np.reshape(p_n[2*M*N:, :], 4,M*N), alpha[1])
         p = np.vstack((p_,q_))
         u = u_n
-        res[it,:] = calc_energy(u, alpha, f)
+        res[it,:] = calc_energy(u, alpha, f, nabla, nabla_tilde)
 
     return res, u
 
