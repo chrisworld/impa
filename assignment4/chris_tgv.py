@@ -128,8 +128,8 @@ def tgv2_pd(f, alpha, maxit):
     q = np.zeros(4 * M * N)
 
     # concatenate
-    u_bold = np.concatenate((u.ravel(), v.ravel()))
-    p_bold = np.concatenate((p.ravel(), q.ravel()))
+    u_b = np.concatenate((u.ravel(), v.ravel()))
+    p_b = np.concatenate((p.ravel(), q.ravel()))
 
     # primal and dual step size
     tau = 1 / 24
@@ -141,17 +141,22 @@ def tgv2_pd(f, alpha, maxit):
         # prox_sum_l1(x, f, tau, Wis)
         # where x is the parameter of the projection function i.e. u^(n+(1/2))
         
-        u_bold_n = u_bold
+        u_bn12 = u_b - tau * k.T @ p_b
 
-        u_bold = u_bold_n - tau * k.T @ p_bold
+        # data term
+        u = prox_sum_l1(u_bn12[:M*N], f, tau, Wis)
+        v = u_bn12[M*N:]
 
-        u = prox_sum_l1(u_bold[:M*N], f, tau, Wis)
-        v = u_bold[M*N:]
+        u_bn1 = np.concatenate((u.ravel(), v.ravel()))
+        
+        p_bn12 = p_b + sigma * k @ (2 * u_bn1 - u_b)
 
-        p_bold = p_bold + sigma * k @ (2 * u_bold - u_bold_n)
+        p = proj_ball(p_bn12[:2*M*N].reshape(2, M*N), alpha[0])
+        q = proj_ball(p_bn12[2*M*N:].reshape(4, M*N), alpha[1])
 
-        p = proj_ball(p_bold[:2*M*N].reshape(2, M*N), alpha[0])
-        q = proj_ball(p_bold[2*M*N:].reshape(4, M*N), alpha[1])
+        # update iterations
+        u_b = u_bn1
+        p_b = np.concatenate((p.ravel(), q.ravel()))
 
 
     return u, v
@@ -187,7 +192,39 @@ def plot_result(u_tgv, alpha):
     plt.imshow(u_tgv, cmap='gray')
     plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
     plt.colorbar()
-    
+
+
+def L2_1norm(X):
+    """
+    L2_1 Matrix norm: L2 norm across rows, l1 nowrm across cols
+    """
+    return np.linalg.norm(np.linalg.norm(X, 2, axis=0), 1)
+
+def calc_energy(u, v, f, alpha):
+    """
+    calculate the energy of the fusion task
+    """
+
+    # shape of things
+    M, N, K = f.shape
+
+    # get nabla operator (MxN, (dx, dy))
+    nabla, _, _ = _make_nabla(M, N)
+
+    #nabla_t = np.diag(nabla, nabla)
+    #nabla_t = np.zeros((4*M*N, 2*M*N), dtype=int)
+
+    nabla_t = scipy.sparse.bmat([[nabla, None], 
+                                 [None, nabla]])
+
+    print("nabla: ", nabla.shape)
+    print("nabla_t: ", nabla_t.shape)
+
+    e = alpha[0] * L2_1norm((nabla @ u - v).reshape(2, M * N)) + alpha[1] * L2_1norm((nabla_t @ v).reshape(4, M * N)) #+ np.sum(np.linalg.norm(u.reshape(M, N)[:,:,np.newaxis] - f, ord=1))
+
+    print("energy: ", e)
+
+    return e
 
 
 def main():
@@ -210,12 +247,16 @@ def main():
     maxit = 10
     
     # hyper params -> find good sets
-    alpha_set = [(0.3, 0.5), (0.1, 1.0), (1.0, 0.1)]
+    #alpha_set = [(0.3, 0.5), (0.1, 1.0), (1.0, 0.1)]
+    alpha_set = [(0.3, 0.5)]
 
     for alpha in alpha_set:
 
         # Perform TGV-Fusion
         u_tgv, v_tgv = tgv2_pd(f, alpha=alpha, maxit=maxit)  
+
+        # calc energy
+        e = calc_energy(u_tgv, v_tgv, f, alpha)
 
         # Plot result
         plot_result(u_tgv.reshape(M, N), alpha)
@@ -224,9 +265,9 @@ def main():
         acc = compute_accX(u_tgv.reshape(M, N), gt, X=1)
 
         # print message
-        print("maxit=[{}], alpha=[{}, {}], Acc: [{}]".format(maxit, alpha[0], alpha[1], acc))
+        print("maxit=[{}], alpha=[{}, {}], Energy: [{:.2f}] Acc: [{:.4f}]".format(maxit, alpha[0], alpha[1], e, acc))
 
-    plt.show()
+    #plt.show()
     # --
     # plot data
     #plot_data(f, gt)
