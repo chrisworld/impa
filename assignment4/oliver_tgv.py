@@ -89,24 +89,23 @@ def L2_1norm(X):
     #Y = np.sum(np.square(np.sum(np.power(X,2), 1)),0)
     return np.linalg.norm(np.linalg.norm(X,2, axis=0),1)
     
-def calc_energy(u_, alpha, f, nabla, nabla_tilde):
+def calc_energy(u_, alpha, f, nabla, nabla_tilde, M,N):
     """
     calculate the energy of the TGV regularized fusion task
     @param u: vector containing of (u_, v_).T
     @param alpha: vector of two regularization parameters alpha1 and alpha2
     @param f: K observations of the same scene
     """
-    M, N, _ = f.shape
     # seperate disparity map u and gradient map v
-    u = u_[M*N:,:]
-    v = u_[:M*N,:]
+    u = u_[:M*N]
+    v = u_[M*N:]
     # get regularization parameters
     a1 = alpha[0]
     a2 = alpha[1]
         
     E = a1 * L2_1norm(((nabla @ u) - v).reshape(2, M*N)) + \
         a2 * L2_1norm((nabla_tilde @ v).reshape(4, M*N)) + \
-            np.sum(np.linalg.norm(u.reshape(M,N)[:,:,np.newaxis] - f, axis=(0,1)))
+            np.sum(np.linalg.norm(u[:,np.newaxis] - f, ord=1, axis=0))
 
     return E
 
@@ -114,7 +113,7 @@ def compute_accX(x, y, X=1):
     M,N = y.shape
     Z = M*N 
 
-    acc = 1.0 /Z * np.sum(np.abs(x.reshape(M,N) - y)<=X)
+    acc = 1.0 /Z * np.sum(np.abs(x - y)<=X)
     # TODO
     return acc
 
@@ -144,7 +143,8 @@ def tgv2_pd(f, alpha, maxit):
     # nablas
     nabla,_,_ = _make_nabla(M,N)
     # probably not correct, but lol.
-    nabla_tilde = _make_nabla(2*M,N)
+    nabla_tilde = sp.bmat([ [nabla, None], 
+                            [None, nabla]])
 
 
     # initializing primal points
@@ -166,7 +166,7 @@ def tgv2_pd(f, alpha, maxit):
     # primal and dual step size
     #tau = 0.0  # TODO
     #sigma = 0.0  # TODO
-    res = np.zeros((maxit,1))
+    res = np.zeros((maxit))
 
     for it in range(0, maxit):
         # TODO calculate iterates as described in Equation (4)
@@ -183,25 +183,37 @@ def tgv2_pd(f, alpha, maxit):
         q_ = proj_ball(np.reshape(p_n[2*M*N:], (4,M*N)), alpha[1])
         p = np.concatenate((p_.ravel(),q_.ravel()))
         u = u_n
-        #res[it,:] = calc_energy(u, alpha, f, nabla, nabla_tilde)
+        res[it] = calc_energy(u, alpha, f, nabla, nabla_tilde, M, N)
 
     #return res, u
-    return u[:M*N].reshape(M,N), u[M*N:]
+    return res, u
 
 
 # Load Observations
 samples = np.array([np.load('../ignore/ass4_data/observation{}.npy'.format(i)) for i in range(0,9)])
 f = samples.transpose(1,2,0)
-alpha = (0.3, 0.5)
+M, N, K = f.shape
+alpha = (0.8, 0.3)
 
 # Perform TGV-Fusion
-res, v = tgv2_pd(f, alpha=alpha, maxit=50)  # TODO: set appropriate parameters
+res, v = tgv2_pd(f, alpha=alpha, maxit=500)  # TODO: set appropriate parameters
+u = v[:M*N].reshape(M,N)
+
+gt = np.load('../ignore/ass4_data/gt.npy')
+acc= compute_accX(u, gt)
+print(acc)
 
 plt.figure()
-plt.imshow(res, cmap='gray')
+plt.imshow(u, cmap='gray')
 #plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
 plt.colorbar()
 plt.show()
+
+
+plt.figure()
+plt.plot(res)
+plt.show()
+
 
 # Plot result
 # TODO
