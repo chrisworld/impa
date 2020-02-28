@@ -3,6 +3,9 @@ import numpy as np
 import scipy
 import scipy.sparse as sp
 
+# 3d plot
+from mpl_toolkits.mplot3d import Axes3D
+
 
 def _make_nabla(M, N):
     row = np.arange(0, M * N)
@@ -83,7 +86,7 @@ def proj_ball(Y, lamb):
     @return: projection result either 2xMN or 4xMN
     """
     # TODO
-    return Y/(np.max((1, (1/lamb * np.linalg.norm(Y)))))
+    return Y/(np.maximum(1, (1/lamb * np.linalg.norm(Y, axis=0))))
 
 def L2_1norm(X):
     #Y = np.sum(np.square(np.sum(np.power(X,2), 1)),0)
@@ -116,6 +119,30 @@ def compute_accX(x, y, X=1):
     acc = 1.0 /Z * np.sum(np.abs(x - y)<=X)
     # TODO
     return acc
+
+def plot_result(u_tgv, alpha):
+    """
+    plot the result
+    """
+    plt.figure()
+    plt.imshow(u_tgv, cmap='gray')
+    plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
+    plt.colorbar()
+
+    # 3D plot
+
+    # shape of things
+    M, N = u_tgv.shape
+    x = np.arange(0, M)
+    y = np.arange(0, N)
+
+    # meshgrid
+    X, Y = np.meshgrid(x, y)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, u_tgv.T, cmap='gray', linewidth=0, antialiased=False)
+    plt.draw()
 
 
 def tgv2_pd(f, alpha, maxit):
@@ -193,26 +220,32 @@ def tgv2_pd(f, alpha, maxit):
 samples = np.array([np.load('../ignore/ass4_data/observation{}.npy'.format(i)) for i in range(0,9)])
 f = samples.transpose(1,2,0)
 M, N, K = f.shape
-alpha = (0.8, 0.3)
+alphaset = [(0.1, 10), (10, 0.1), (0.1, 0.1)]
+#alphaset = [(1.5, 1.1)]
 
+for alpha in alphaset:
 # Perform TGV-Fusion
-res, v = tgv2_pd(f, alpha=alpha, maxit=500)  # TODO: set appropriate parameters
-u = v[:M*N].reshape(M,N)
+    res, v = tgv2_pd(f, alpha=alpha, maxit=500)  # TODO: set appropriate parameters
+    u = v[:M*N].reshape(M,N)
 
-gt = np.load('../ignore/ass4_data/gt.npy')
-acc= compute_accX(u, gt)
-print(acc)
+    gt = np.load('../ignore/ass4_data/gt.npy')
+    acc= compute_accX(u, gt)
+    print(acc)
 
-plt.figure()
-plt.imshow(u, cmap='gray')
-#plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
-plt.colorbar()
-plt.show()
+    plt.figure()
+    plt.imshow(u, cmap='gray')
+    #plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
+    plt.colorbar()
+    plt.show()
 
+    #plot_result(u, alpha)
 
-plt.figure()
-plt.plot(res)
-plt.show()
+    plt.figure()
+    plt.plot(res)
+    plt.title('Energy over Iterations', fontsize=16)
+    plt.ylabel('Energy in A.U.', fontsize=14)
+    plt.xlabel('Number of Iterations', fontsize=14)
+    plt.show()
 
 
 # Plot result
