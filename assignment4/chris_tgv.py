@@ -3,6 +3,9 @@ import numpy as np
 import scipy
 import scipy.sparse as sp
 
+# 3d plot
+from mpl_toolkits.mplot3d import Axes3D
+
 
 def _make_nabla(M, N):
     row = np.arange(0, M * N)
@@ -206,6 +209,20 @@ def plot_result(u_tgv, alpha):
     plt.imshow(u_tgv, cmap='gray')
     plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
     plt.colorbar()
+
+    # 3D plot
+
+    # shape of things
+    M, N = u_tgv.shape
+    x = np.arange(0, M)
+    y = np.arange(0, N)
+
+    # meshgrid
+    X, Y = np.meshgrid(x, y)
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, u_tgv, cmap='jet', linewidth=0, antialiased=False)
 
 
 def L2_1norm(X):
