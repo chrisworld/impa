@@ -107,8 +107,11 @@ def tgv2_pd(f, alpha, maxit):
     @param maxit: maximum number of iterations
     @return: tuple of u with shape MxN and v with shape 2xMxN
     """
+
+    # image space
     f_img = f
 
+    # shape of things
     M, N, K = f.shape
     f = f.reshape(M*N, K)
 
@@ -140,6 +143,7 @@ def tgv2_pd(f, alpha, maxit):
     tau = 1 / 24
     sigma = 1 / 24
 
+    # energy list
     e_list = []
 
     for it in range(0, maxit):
@@ -153,6 +157,11 @@ def tgv2_pd(f, alpha, maxit):
         # data term
         u = prox_sum_l1(u_bn12[:M*N], f, tau, Wis)
         v = u_bn12[M*N:]
+
+        # if it % 10 == 0:
+        #     plt.figure()
+        #     plt.imshow(u_n.reshape(M, N), cmap='gray')
+        #     plt.show()
 
         u_bn1 = np.concatenate((u.ravel(), v.ravel()))
         
@@ -171,37 +180,56 @@ def tgv2_pd(f, alpha, maxit):
     # print energy
     plt.figure()
     plt.title("TGV Energy, alpha=[{}, {}]".format(alpha[0], alpha[1]))
-    plt.xlabel("iterations")
+    plt.xlabel("Iterations")
     plt.ylabel("Energy")
     plt.plot(e_list)
+    plt.tight_layout()
     #plt.show()
 
     return u, v
 
 
-def plot_data(f, gt):
+def plot_data(f, gt, plot_obs=False):
     """
     plot sample data and ground truth
     """
 
-    # plot obervations
-    for obs in range(f.shape[2]):
+    if plot_obs:
+        # plot obervations
+        for obs in range(f.shape[2]):
 
-        plt.figure()
-        plt.imshow(f[:,:, obs], cmap='gray')
-        plt.title("Observation {}".format(obs))
-        plt.colorbar()
-        plt.show()
+            plt.figure()
+            plt.imshow(f[:,:, obs], cmap='gray')
+            plt.title("Observation {}".format(obs))
+            plt.colorbar()
+            plt.show()
 
     # plot ground truth
     plt.figure()
     plt.imshow(gt, cmap='gray')
-    plt.title("Ground Truth")
+    #plt.title("Ground Truth")
     plt.colorbar()
+    plt.tight_layout()
+
+    # 3D plot
+    # shape of things
+    M, N = gt.shape
+    x = np.arange(0, M)
+    y = np.arange(0, N)
+
+    # meshgrid
+    X, Y = np.meshgrid(x, y)
+
+    # plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot_surface(X, Y, gt, cmap='gray', linewidth=0, antialiased=False)
+    #plt.colorbar()
+    plt.tight_layout()
     plt.show()
 
 
-def plot_result(u_tgv, alpha):
+def plot_result(u_tgv, alpha, plot_3d=False):
     """
     plot the result
     """
@@ -209,20 +237,23 @@ def plot_result(u_tgv, alpha):
     plt.imshow(u_tgv, cmap='gray')
     plt.title("TGV alpha=[{}, {}]".format(alpha[0], alpha[1]))
     plt.colorbar()
+    plt.tight_layout()
 
     # 3D plot
+    if plot_3d:
+        # shape of things
+        M, N = u_tgv.shape
+        x = np.arange(0, M)
+        y = np.arange(0, N)
 
-    # shape of things
-    M, N = u_tgv.shape
-    x = np.arange(0, M)
-    y = np.arange(0, N)
+        # meshgrid
+        X, Y = np.meshgrid(x, y)
 
-    # meshgrid
-    X, Y = np.meshgrid(x, y)
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(X, Y, u_tgv, cmap='jet', linewidth=0, antialiased=False)
+        # plot
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(X, Y, u_tgv, cmap='Greys', linewidth=0, antialiased=False)
+        plt.tight_layout()
 
 
 def L2_1norm(X):
@@ -273,11 +304,11 @@ def main():
     #plot_data(f, gt)
 
     # max iterations
-    maxit = 10
+    maxit = 100
     
     # hyper params -> find good sets
     #alpha_set = [(0.001, 1.0), (1.0, 0.001), (0.5, 0.5)]
-    alpha_set = [(0.8, 0.3)]
+    alpha_set = [(1.0, 1.0)]
 
     for alpha in alpha_set:
 
@@ -297,9 +328,6 @@ def main():
         print("maxit=[{}], alpha=[{}, {}], Energy: [{:.2f}] Acc: [{:.4f}]".format(maxit, alpha[0], alpha[1], e, acc))
 
     plt.show()
-    # --
-    # plot data
-    #plot_data(f, gt)
 
 
 
