@@ -84,7 +84,7 @@ def proj_ball(Y, lamb):
     @param lamb: scalar hyperparameter lambda
     @return: projection result either 2xMN or 4xMN
     """
-    return Y / (np.max((1, np.linalg.norm(Y) / lamb)))
+    return Y / (np.maximum(1, (1 / lamb * np.linalg.norm(Y, axis=0))))
 
 
 def compute_accX(x, y, X=1, mask=None):
@@ -252,7 +252,7 @@ def plot_result(u_tgv, alpha, plot_3d=False):
         # plot
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(X, Y, u_tgv, cmap='Greys', linewidth=0, antialiased=False)
+        ax.plot_surface(X, Y, u_tgv, cmap='gray', linewidth=0, antialiased=False)
         plt.tight_layout()
 
 
@@ -304,11 +304,11 @@ def main():
     #plot_data(f, gt)
 
     # max iterations
-    maxit = 100
+    maxit = 300
     
     # hyper params -> find good sets
     #alpha_set = [(0.001, 1.0), (1.0, 0.001), (0.5, 0.5)]
-    alpha_set = [(1.0, 1.0)]
+    alpha_set = [(1.0, 0.1), (1.0, 0.5), (1.0, 1.0)]
 
     for alpha in alpha_set:
 
@@ -319,7 +319,7 @@ def main():
         e = calc_energy(u_tgv, v_tgv, f, alpha)
 
         # Plot result
-        plot_result(u_tgv.reshape(M, N), alpha)
+        plot_result(u_tgv.reshape(M, N), alpha, plot_3d=False)
 
         # Calculate Accuracy
         acc = compute_accX(u_tgv.reshape(M, N), gt, X=1)
