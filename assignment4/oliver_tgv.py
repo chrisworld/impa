@@ -83,7 +83,7 @@ def proj_ball(Y, lamb):
     @return: projection result either 2xMN or 4xMN
     """
     # TODO
-    return Y/(np.max((1, (1/lamb * np.linalg.norm(Y)))))
+    return Y/(np.maximum(1, (1/lamb * np.linalg.norm(Y, axis=0))))
 
 def L2_1norm(X):
     #Y = np.sum(np.square(np.sum(np.power(X,2), 1)),0)
