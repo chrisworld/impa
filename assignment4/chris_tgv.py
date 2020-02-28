@@ -222,7 +222,7 @@ def plot_result(u_tgv, alpha):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(X, Y, u_tgv, cmap='jet', linewidth=0, antialiased=False)
+    ax.plot_surface(X, Y, u_tgv, cmap='gray', linewidth=0, antialiased=False)
 
 
 def L2_1norm(X):
